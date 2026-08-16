@@ -347,6 +347,16 @@ def _save_summary(
             f.write(f"  {label:12s}: n={count:3d}, acc@{tolerance:g}px={accuracy * 100:5.1f}%\n")
         f.write(f"  Mean verification score: {np.mean(verification):.3f}\n")
 
+        f.write("\nPREEMPTIVE DIAGNOSTIC ENGINE\n")
+        f.write("-" * 40 + "\n")
+        labels = [r.get("confidence_label", "UNKNOWN") for r in results]
+        unique_labels = set(labels)
+        for label in unique_labels:
+            mask = np.array([lbl == label for lbl in labels])
+            count = int(mask.sum())
+            accuracy = float((errors_arr[mask] <= tolerance).mean()) if count else 0.0
+            f.write(f"  {label:30s}: n={count:3d}, acc@{tolerance:g}px={accuracy * 100:5.1f}%\n")
+
         f.write("\nTIMING STATISTICS\n")
         f.write("-" * 40 + "\n")
         f.write(f"  Mean:   {np.mean(times):8.3f} s\n")
@@ -403,8 +413,8 @@ def main() -> None:
     manifest_dir = os.path.dirname(os.path.abspath(args.manifest))
 
     for i, row in enumerate(rows):
-        ref_path = os.path.normpath(os.path.join(manifest_dir, row["reference_path"]))
-        search_path = os.path.normpath(os.path.join(manifest_dir, row["search_path"]))
+        ref_path = os.path.normpath(os.path.join(manifest_dir, row["reference_path"].replace("\\", "/")))
+        search_path = os.path.normpath(os.path.join(manifest_dir, row["search_path"].replace("\\", "/")))
         gt_x = float(row["gt_x"])
         gt_y = float(row["gt_y"])
         gt_box_w = float(row.get("gt_box_w", 100.0))
@@ -472,13 +482,17 @@ def main() -> None:
                 "is_periodic": diagnostics.get("is_periodic", False),
                 "period_strength": diagnostics.get("period_strength", 0.0),
                 "verification_score": diagnostics.get("verification_score", 0.0),
+                "confidence_label": diagnostics.get("confidence_label", "UNKNOWN"),
+                "max_zncc_score": diagnostics.get("max_zncc_score", 0.0),
+                "aliasing_ratio": diagnostics.get("aliasing_ratio", 0.0),
             }
         )
 
         status = "[OK]" if error <= args.tolerance_px else "[FAIL]"
+        conf_label = diagnostics.get("confidence_label", "UNKNOWN")
         print(
             f"  [{i + 1}/{len(rows)}] {status} {architecture} "
-            f"err={error:.2f}px time={elapsed:.2f}s"
+            f"err={error:.2f}px time={elapsed:.2f}s [{conf_label}]"
         )
 
     # Generate outputs

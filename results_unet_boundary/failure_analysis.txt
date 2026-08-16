@@ -1,0 +1,16 @@
+========================================================================
+FAILURE CASE ANALYSIS
+========================================================================
+
+Sample ID: 28
+Architecture: dram_dense
+Ground Truth: (149.91, 576.40)
+Predicted:    (149.01, 576.41)
+Error:        0.90 px
+Time:         0.195 s
+
+ROOT CAUSE ANALYSIS
+----------------------------------------
+Error of 0.90 px. The localization was
+within acceptable bounds.
+This case represents the maximum error in the test set.

@@ -2,12 +2,12 @@
 FAILURE CASE ANALYSIS
 ========================================================================
 
-Sample ID: 40
-Architecture: dram_loose
-Ground Truth: (359.28, 945.60)
-Predicted:    (742.05, 459.01)
-Error:        619.09 px
-Time:         0.048 s
+Sample ID: 42
+Architecture: dram_wide
+Ground Truth: (81.31, 937.50)
+Predicted:    (742.10, 444.90)
+Error:        824.20 px
+Time:         0.193 s
 
 ROOT CAUSE ANALYSIS
 ----------------------------------------
