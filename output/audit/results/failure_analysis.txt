@@ -1,0 +1,16 @@
+========================================================================
+FAILURE CASE ANALYSIS
+========================================================================
+
+Sample ID: 2
+Architecture: finfet_14nm
+Ground Truth: (228.22, 230.50)
+Predicted:    (811.95, 516.86)
+Error:        650.18 px
+Time:         0.248 s
+
+ROOT CAUSE ANALYSIS
+----------------------------------------
+Error of 650.18 px. The localization was
+outside tolerance.
+This case represents the maximum error in the test set.

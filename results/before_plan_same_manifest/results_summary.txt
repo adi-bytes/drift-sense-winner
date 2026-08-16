@@ -1,0 +1,48 @@
+========================================================================
+DRIFT-SENSE EVALUATION RESULTS
+========================================================================
+
+Total samples:    50
+Tolerance:        5.0 px
+
+ACCURACY BY TOLERANCE
+----------------------------------------
+  <=1px:   62.0% (31/50)
+  <=2px:   62.0% (31/50)
+  <=3px:   62.0% (31/50)
+  <=4px:   62.0% (31/50)
+  <=5px:   62.0% (31/50)
+
+ERROR STATISTICS
+----------------------------------------
+  Mean:    122.534 px
+  Median:    0.644 px
+  Std:     228.158 px
+  Max:    1007.345 px
+  Min:       0.051 px
+  Catastrophic >50px: 15
+
+CONFIDENCE STATISTICS
+----------------------------------------
+  Mean:      1.000
+  Min:       1.000
+  <0.6:   0/50
+
+PERIODICITY BREAKDOWN
+----------------------------------------
+  periodic    : n=  0, acc@5px=  0.0%
+  non-periodic: n= 50, acc@5px= 62.0%
+  Mean verification score: 0.920
+
+TIMING STATISTICS
+----------------------------------------
+  Mean:      0.316 s
+  Std:       0.025 s
+  Min:       0.263 s
+  Max:       0.369 s
+
+PER-ARCHITECTURE BREAKDOWN
+----------------------------------------
+  DRAM    : n= 23, acc@5px= 69.6%, acc@2px= 69.6%, mean_err=139.23px, median=0.45px
+  FinFET  : n= 27, acc@5px= 55.6%, acc@2px= 55.6%, mean_err=108.31px, median=0.87px
+

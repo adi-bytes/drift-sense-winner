@@ -1,0 +1,10 @@
+{
+  "extraPaths": [
+    ".",
+    "src"
+  ],
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none",
+  "reportUndefinedVariable": "none",
+  "reportGeneralTypeIssues": "none"
+}
