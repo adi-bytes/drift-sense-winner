@@ -148,7 +148,6 @@ def localize(
     t0 = time.perf_counter()
     
     # Defaults for diagnostics
-    is_periodic = False
     periodic_strength = 0.0
     period_px = (0, 0)
     selected_method = "coarse_best"
@@ -240,7 +239,6 @@ def localize(
     )
 
     diagnostics = {
-        "is_periodic": is_periodic,
         "period_strength": periodic_strength,
         "period_px": period_px,
         "verification_score": verification_score,

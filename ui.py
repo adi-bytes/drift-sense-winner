@@ -50,24 +50,28 @@ results_dir = st.sidebar.text_input("Results Directory", value="./results_stream
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Action Controls")
 
-col1, col2 = st.columns(2)
+tab1, tab2, tab3 = st.tabs(["🔬 1. Data Gen & Viewer", "⚙️ 2. Run Inference", "📊 3. Dashboard & Analysis"])
 
-with col1:
-    st.subheader("1. Data Generation")
-    st.write("Generate a synthetic physical SEM dataset based on the severity curriculum.")
-    if st.button("Generate Dataset", use_container_width=True):
+# --- TAB 1: DATA GENERATION & VIEWER ---
+with tab1:
+    st.subheader("Data Generation Engine")
+    st.write("Generate a synthetic physical SEM dataset based on your sidebar curriculum.")
+    
+    col_btn, col_msg = st.columns([1, 2])
+    with col_btn:
+        generate_clicked = st.button("Generate Dataset", use_container_width=True, type="primary")
+        
+    if generate_clicked:
         if config_mode == "Severity Curriculum (Easy)":
             st.info(f"Generating {num_samples} samples at Severity {severity}...")
         else:
             st.info(f"Generating {num_samples} custom physics samples...")
             
-        # Build command
         cmd = [
             "python3", "-m", "final_data_generation.run",
             "--num-samples", str(num_samples),
             "--output-dir", output_dir
         ]
-        
         if config_mode == "Severity Curriculum (Easy)":
             cmd.extend(["--severity-level", str(severity)])
         else:
@@ -75,27 +79,57 @@ with col1:
         
         with st.spinner("Running final_data_generation engine..."):
             result = subprocess.run(cmd, capture_output=True, text=True)
-            
             if result.returncode == 0:
-                st.success("Dataset generated successfully!")
-                with st.expander("View Generation Logs", expanded=True):
+                st.success(f"Successfully generated {num_samples} samples!")
+                with st.expander("View Generation Logs", expanded=False):
                     st.code(result.stdout + "\n" + result.stderr)
             else:
                 st.error("Error generating dataset.")
-                st.code(result.stderr)
+                with st.expander("View Error Logs", expanded=True):
+                    st.code(result.stderr)
 
-with col2:
-    st.subheader("2. Inference & Evaluation")
+    st.markdown("---")
+    st.subheader("Dataset Image Viewer")
+    
+    test_dir = os.path.join(output_dir, "test")
+    if os.path.exists(test_dir):
+        ref_dir = os.path.join(test_dir, "reference")
+        if os.path.exists(ref_dir):
+            images = sorted([f for f in os.listdir(ref_dir) if f.endswith(".png")])
+            if images:
+                selected_img = st.selectbox("Select a generated sample to view:", images)
+                
+                col_ref, col_search = st.columns(2)
+                with col_ref:
+                    st.markdown("**Reference Image** *(Clean, 1nm/pixel, High Dose)*")
+                    st.image(os.path.join(ref_dir, selected_img), use_container_width=True)
+                with col_search:
+                    st.markdown("**Search Image** *(Drifted, 10nm/pixel, Low Dose)*")
+                    search_path = os.path.join(test_dir, "search", selected_img)
+                    if os.path.exists(search_path):
+                        st.image(search_path, use_container_width=True)
+                    else:
+                        st.error("Search image not found.")
+            else:
+                st.info("No images found in the dataset folder.")
+    else:
+        st.info("Click 'Generate Dataset' above to populate the viewer.")
+
+
+# --- TAB 2: RUN INFERENCE ---
+with tab2:
+    st.subheader("Localization & Evaluation Engine")
     st.write("Run the routing engine (ZNCC + U-Net) and calculate sub-pixel accuracy.")
-    if st.button("Run Evaluation", use_container_width=True):
-        st.info("Running evaluation pipeline...")
+    
+    col_run, col_run_msg = st.columns([1, 2])
+    with col_run:
+        eval_clicked = st.button("Run Evaluation Pipeline", use_container_width=True, type="primary")
         
+    if eval_clicked:
         manifest_path = os.path.join(output_dir, "test", "manifest.csv")
-        
         if not os.path.exists(manifest_path):
             st.error(f"Manifest file not found at {manifest_path}. Please generate the dataset first.")
         else:
-            # Build command
             cmd = [
                 "python3", "evaluate.py",
                 "--manifest", manifest_path,
@@ -105,82 +139,104 @@ with col2:
             
             with st.spinner("Running inference engine (this may take a moment)..."):
                 result = subprocess.run(cmd, capture_output=True, text=True)
-                
                 if result.returncode == 0:
                     st.success("Evaluation completed successfully!")
-                    with st.expander("View Evaluation Logs", expanded=True):
+                    with st.expander("View Raw Evaluation Logs", expanded=False):
                         st.code(result.stdout)
-                    
-                    # Display the results summary if available
-                    summary_path = os.path.join(results_dir, "results_summary.txt")
-                    if os.path.exists(summary_path):
-                        st.markdown("### Final Results")
-                        with open(summary_path, "r") as f:
-                            st.text(f.read())
                 else:
                     st.error("Error running evaluation.")
-                    st.code(result.stderr)
-
-st.markdown("---")
-st.header("📊 Evaluation Analysis")
-
-if os.path.exists(results_dir):
-    tab1, tab2 = st.tabs(["Predictions Table", "Failure Analysis"])
+                    with st.expander("View Error Logs", expanded=True):
+                        st.code(result.stderr)
     
-    with tab1:
-        st.subheader("Ground Truth vs Predicted Locations")
+    st.info("Once evaluation is complete, proceed to the Dashboard tab to view the visual breakdown.")
+
+
+# --- TAB 3: DASHBOARD & ANALYSIS ---
+with tab3:
+    if not os.path.exists(results_dir) or not os.path.exists(os.path.join(results_dir, "predictions.csv")):
+        st.warning("No evaluation results found. Please run the evaluation pipeline in Tab 2 first.")
+    else:
+        # High Level Metrics
         predictions_path = os.path.join(results_dir, "predictions.csv")
-        if os.path.exists(predictions_path):
-            df = pd.read_csv(predictions_path)
-            st.dataframe(df, use_container_width=True)
-        else:
-            st.info("Run Evaluation to generate the predictions table.")
-            
-    with tab2:
-        st.subheader("Why did the engine fail?")
+        df = pd.read_csv(predictions_path)
+        
+        acc_1px = (df["error"] <= 1.0).mean() * 100
+        acc_2px = (df["error"] <= 2.0).mean() * 100
+        acc_3px = (df["error"] <= 3.0).mean() * 100
+        acc_4px = (df["error"] <= 4.0).mean() * 100
+        acc_5px = (df["error"] <= 5.0).mean() * 100
+        mean_err = df["error"].mean()
+        median_err = df["error"].median()
+        mean_time = df["time"].mean() * 1000  # ms
+        
+        st.subheader("Performance Metrics")
+        
+        st.markdown("**Accuracies (1px - 5px Tolerance)**")
+        a1, a2, a3, a4, a5 = st.columns(5)
+        a1.metric("1px", f"{acc_1px:.1f}%")
+        a2.metric("2px", f"{acc_2px:.1f}%")
+        a3.metric("3px", f"{acc_3px:.1f}%")
+        a4.metric("4px", f"{acc_4px:.1f}%")
+        a5.metric("5px", f"{acc_5px:.1f}%")
+        
+        st.markdown("**Error & Latency**")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Mean Error", f"{mean_err:.2f} px")
+        m2.metric("Median Error", f"{median_err:.2f} px")
+        m3.metric("Avg Latency", f"{mean_time:.0f} ms")
+        
+        st.markdown("---")
+        
+        # Explainability & Failure Analysis
+        st.subheader("Explainability & Root Cause Analysis")
         failure_txt_path = os.path.join(results_dir, "failure_analysis.txt")
         failure_img_path = os.path.join(results_dir, "failure_case.png")
         
-        if os.path.exists(failure_txt_path):
-            with open(failure_txt_path, "r") as f:
-                failure_text = f.read()
-            st.text(failure_text)
-        else:
-            st.info("No failure analysis found.")
+        if os.path.exists(failure_txt_path) and os.path.exists(failure_img_path):
+            col_img, col_txt = st.columns([3, 2])
             
-        if os.path.exists(failure_img_path):
-            st.image(failure_img_path, use_container_width=True, caption="Worst Failure Case")
-else:
-    st.info("Run Evaluation above to unlock the Analysis section!")
-
-st.markdown("---")
-st.header("🖼️ Dataset Image Viewer")
-
-test_dir = os.path.join(output_dir, "test")
-if os.path.exists(test_dir):
-    # Find all reference images to determine available samples
-    ref_dir = os.path.join(test_dir, "reference")
-    if os.path.exists(ref_dir):
-        images = sorted([f for f in os.listdir(ref_dir) if f.endswith(".png")])
-        if images:
-            selected_img = st.selectbox("Select a sample to view:", images)
-            
-            col_ref, col_search = st.columns(2)
-            
-            with col_ref:
-                st.subheader("Reference Image")
-                st.write("(Clean, 1nm/pixel, High Dose)")
-                st.image(os.path.join(ref_dir, selected_img), use_container_width=True)
+            with col_img:
+                st.markdown("**Worst Failure Case Visualization**")
+                st.image(failure_img_path, use_container_width=True)
                 
-            with col_search:
-                st.subheader("Search Image")
-                st.write("(Drifted, 10nm/pixel, Low Dose)")
-                search_path = os.path.join(test_dir, "search", selected_img)
-                if os.path.exists(search_path):
-                    st.image(search_path, use_container_width=True)
+            with col_txt:
+                st.markdown("**Root Cause Diagnosis**")
+                with open(failure_txt_path, "r") as f:
+                    failure_text = f.read()
+                
+                # Parse the text file to make it look nicer
+                if "ROOT CAUSE ANALYSIS" in failure_text:
+                    parts = failure_text.split("ROOT CAUSE ANALYSIS")
+                    header = parts[0]
+                    body = parts[1]
+                    
+                    if "PROPOSED FIX" in body:
+                        subparts = body.split("PROPOSED FIX")
+                        cause = subparts[0].replace("-", "").strip()
+                        fix = subparts[1].replace("-", "").strip()
+                        
+                        st.error(f"**The Problem:**\n\n{cause}")
+                        st.success(f"**Proposed Fix:**\n\n{fix}")
+                    else:
+                        st.info(body.replace("-", "").strip())
                 else:
-                    st.error("Search image not found.")
+                    st.text(failure_text)
         else:
-            st.info("No images found in the dataset folder.")
-else:
-    st.info("Generate a dataset above to unlock the Image Viewer!")
+            st.info("No failure analysis data generated.")
+            
+        st.markdown("---")
+        
+        # Predictions Table
+        st.subheader("Detailed Predictions Table")
+        
+        # Style the dataframe: green if error <= 5, red if > 5
+        def highlight_errors(val):
+            color = '#2ecc71' if val <= 5.0 else '#e74c3c'
+            return f'color: {color}; font-weight: bold'
+            
+        st.dataframe(
+            df.style.map(highlight_errors, subset=['error']), 
+            use_container_width=True,
+            height=300
+        )
+

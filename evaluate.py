@@ -276,7 +276,7 @@ def _save_predictions_csv(results: list[dict], output_path: str) -> None:
     
     fieldnames = [
         "id", "architecture", "error", "gt_x", "gt_y", "pred_x", "pred_y", 
-        "time", "confidence_label", "is_periodic"
+        "time", "confidence_label"
     ]
     
     with open(output_path, "w", newline="", encoding="utf-8") as f:
@@ -353,14 +353,9 @@ def _save_summary(
         f.write(f"  Mean:   {np.mean(confidences):8.3f}\n")
         f.write(f"  Min:    {np.min(confidences):8.3f}\n")
         f.write(f"  <0.6:   {int((confidences < 0.6).sum())}/{len(confidences)}\n")
-        periodic = np.asarray([bool(r.get("is_periodic", False)) for r in results])
         verification = np.asarray([r.get("verification_score", 0.0) for r in results])
         f.write("\nPERIODICITY BREAKDOWN\n")
         f.write("-" * 40 + "\n")
-        for label, mask in (("periodic", periodic), ("non-periodic", ~periodic)):
-            count = int(mask.sum())
-            accuracy = float((errors_arr[mask] <= tolerance).mean()) if count else 0.0
-            f.write(f"  {label:12s}: n={count:3d}, acc@{tolerance:g}px={accuracy * 100:5.1f}%\n")
         f.write(f"  Mean verification score: {np.mean(verification):.3f}\n")
 
         f.write("\nPREEMPTIVE DIAGNOSTIC ENGINE\n")
@@ -453,19 +448,19 @@ def main() -> None:
             print(f"  [{i + 1}/{len(rows)}] FILE ERROR on sample {sample_id}: {e}", file=sys.stderr)
             pred_x, pred_y = 500.0, 500.0
             confidence = 0.0
-            diagnostics = {"is_periodic": False, "period_strength": 0.0}
+            diagnostics = {"period_strength": 0.0}
         except cv2.error as e:
             failure_reason = "opencv_error"
             print(f"  [{i + 1}/{len(rows)}] OpenCV ERROR on sample {sample_id}: {e}", file=sys.stderr)
             pred_x, pred_y = 500.0, 500.0
             confidence = 0.0
-            diagnostics = {"is_periodic": False, "period_strength": 0.0}
+            diagnostics = {"period_strength": 0.0}
         except (ValueError, RuntimeError, OSError) as e:
             failure_reason = type(e).__name__
             print(f"  [{i + 1}/{len(rows)}] PIPELINE ERROR on sample {sample_id}: {e}", file=sys.stderr)
             pred_x, pred_y = 500.0, 500.0
             confidence = 0.0
-            diagnostics = {"is_periodic": False, "period_strength": 0.0}
+            diagnostics = {"period_strength": 0.0}
         except Exception as e:  # Defensive boundary for one bad sample.
             failure_reason = f"unexpected:{type(e).__name__}"
             print(
@@ -474,7 +469,7 @@ def main() -> None:
             )
             pred_x, pred_y = 500.0, 500.0
             confidence = 0.0
-            diagnostics = {"is_periodic": False, "period_strength": 0.0}
+            diagnostics = {"period_strength": 0.0}
 
         elapsed = time.perf_counter() - t0
         error = float(np.hypot(pred_x - gt_x, pred_y - gt_y))
@@ -495,7 +490,6 @@ def main() -> None:
                 "search_path": search_path,
                 "failure_reason": failure_reason,
                 "confidence": confidence,
-                "is_periodic": diagnostics.get("is_periodic", False),
                 "period_strength": diagnostics.get("period_strength", 0.0),
                 "verification_score": diagnostics.get("verification_score", 0.0),
                 "confidence_label": diagnostics.get("confidence_label", "UNKNOWN"),
