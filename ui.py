@@ -10,9 +10,40 @@ st.markdown("A control panel for the Drift-Sense SEM localization engine.")
 
 # Sidebar for Configuration
 st.sidebar.header("Configuration")
-severity = st.sidebar.slider("Severity Level (0-6)", min_value=0, max_value=6, value=2, 
-                            help="0=Ideal, 6=Extreme Drift & Noise")
-num_samples = st.sidebar.number_input("Number of Samples", min_value=1, max_value=500, value=10)
+
+# Customization Mode
+config_mode = st.sidebar.radio("Customization Mode", ["Severity Curriculum (Easy)", "Advanced Customization (Full Physics)"])
+
+# Batch or Single
+batch_mode = st.sidebar.radio("Generation Mode", ["Single Image", "Batch Mode"])
+num_samples = 1 if batch_mode == "Single Image" else st.sidebar.number_input("Number of Samples", min_value=1, max_value=500, value=10)
+
+severity = None
+advanced_args = []
+
+if config_mode == "Severity Curriculum (Easy)":
+    severity = st.sidebar.slider("Severity Level (0-6)", min_value=0, max_value=6, value=2, 
+                                help="0=Ideal, 6=Extreme Drift & Noise")
+else:
+    st.sidebar.markdown("### Advanced Physics Knobs")
+    dose_ref = st.sidebar.slider("Reference Dose (higher = cleaner)", 500, 5000, 2000)
+    dose_search = st.sidebar.slider("Search Dose (higher = cleaner)", 50, 2000, 200)
+    stage_drift = st.sidebar.slider("Stage Placement Error (px)", 0, 450, 50,
+                                   help="Simulates macro-stage navigation errors")
+    shear_amp = st.sidebar.slider("Temporal Drift Amplitude (px)", 0.0, 10.0, 1.5,
+                                 help="Smooth raster drift shear")
+    noise_sigma = st.sidebar.slider("Electronic Noise Sigma", 0.0, 25.0, 5.0)
+    spot_size = st.sidebar.slider("Beam Spot Size (nm)", 1.0, 20.0, 5.0)
+    advanced_args = [
+        "--dose-reference", str(dose_ref),
+        "--dose-search", str(dose_search),
+        "--stage-drift-px", str(stage_drift),
+        "--drift-amplitude-px", str(shear_amp),
+        "--correlated-noise-sigma", str(noise_sigma),
+        "--beam-spot-size-nm", str(spot_size),
+    ]
+
+st.sidebar.markdown("---")
 output_dir = st.sidebar.text_input("Dataset Directory", value="./data_streamlit")
 results_dir = st.sidebar.text_input("Results Directory", value="./results_streamlit")
 
@@ -25,15 +56,22 @@ with col1:
     st.subheader("1. Data Generation")
     st.write("Generate a synthetic physical SEM dataset based on the severity curriculum.")
     if st.button("Generate Dataset", use_container_width=True):
-        st.info(f"Generating {num_samples} samples at Severity {severity}...")
-        
+        if config_mode == "Severity Curriculum (Easy)":
+            st.info(f"Generating {num_samples} samples at Severity {severity}...")
+        else:
+            st.info(f"Generating {num_samples} custom physics samples...")
+            
         # Build command
         cmd = [
             "python3", "-m", "final_data_generation.run",
             "--num-samples", str(num_samples),
-            "--severity-level", str(severity),
             "--output-dir", output_dir
         ]
+        
+        if config_mode == "Severity Curriculum (Easy)":
+            cmd.extend(["--severity-level", str(severity)])
+        else:
+            cmd.extend(advanced_args)
         
         with st.spinner("Running final_data_generation engine..."):
             result = subprocess.run(cmd, capture_output=True, text=True)

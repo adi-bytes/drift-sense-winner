@@ -189,6 +189,7 @@ SEVERITY_PARAMS: dict[int, dict] = {
         barrel_distortion_k=0.0, charging_streak_prob=0.0,
         speckle_sigma=0.0, salt_pepper_prob=0.0,
         rotation_max_deg=0.0, boundary_bias=0.35,
+        stage_drift_px=0.0,
     ),
     1: dict(
         # Level 1: Normal SEM. Realistic PSF + shot noise. Fast path should win.
@@ -203,6 +204,7 @@ SEVERITY_PARAMS: dict[int, dict] = {
         barrel_distortion_k=0.01, charging_streak_prob=0.01,
         speckle_sigma=0.02, salt_pepper_prob=0.001,
         rotation_max_deg=0.1, boundary_bias=0.35,
+        stage_drift_px=10.0,
     ),
     2: dict(
         # Level 2: Low dose. Strong Poisson + correlated electronic noise.
@@ -218,6 +220,7 @@ SEVERITY_PARAMS: dict[int, dict] = {
         barrel_distortion_k=0.02, charging_streak_prob=0.05,
         speckle_sigma=0.03, salt_pepper_prob=0.002,
         rotation_max_deg=0.2, boundary_bias=0.5,
+        stage_drift_px=50.0,
     ),
     3: dict(
         # Level 3: Low dose + smooth temporal drift + scan-line shifts.
@@ -233,6 +236,7 @@ SEVERITY_PARAMS: dict[int, dict] = {
         barrel_distortion_k=0.03, charging_streak_prob=0.1,
         speckle_sigma=0.04, salt_pepper_prob=0.003,
         rotation_max_deg=0.3, boundary_bias=0.7,
+        stage_drift_px=200.0,
     ),
     4: dict(
         # Level 4: Lvl3 + defocus + stronger LER + proximity effects active.
@@ -247,6 +251,7 @@ SEVERITY_PARAMS: dict[int, dict] = {
         barrel_distortion_k=0.04, charging_streak_prob=0.15,
         speckle_sigma=0.05, salt_pepper_prob=0.004,
         rotation_max_deg=0.4, boundary_bias=0.8,
+        stage_drift_px=250.0,
     ),
     5: dict(
         # Level 5: Challenging SEM. High drift, noisy, strong structural variation.
@@ -261,6 +266,7 @@ SEVERITY_PARAMS: dict[int, dict] = {
         barrel_distortion_k=0.05, charging_streak_prob=0.2,
         speckle_sigma=0.06, salt_pepper_prob=0.005,
         rotation_max_deg=0.5, boundary_bias=0.9,
+        stage_drift_px=300.0,
     ),
     6: dict(
         # Level 6: Extreme Drift-Sense scenario.
@@ -277,6 +283,7 @@ SEVERITY_PARAMS: dict[int, dict] = {
         barrel_distortion_k=0.06, charging_streak_prob=0.25,
         speckle_sigma=0.08, salt_pepper_prob=0.006,
         rotation_max_deg=0.6, boundary_bias=1.0,
+        stage_drift_px=400.0,
     ),
 }
 
