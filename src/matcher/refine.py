@@ -48,29 +48,48 @@ def _parabolic_offset_1d(values: np.ndarray, peak: int) -> float:
 def refine_subpixel(
     reference: np.ndarray,
     search: np.ndarray,
-    coarse_x: float,
-    coarse_y: float,
+    candidate: Candidate,
     search_window: int = 20,
 ) -> tuple[float, float]:
     """Refine a coarse 10x match with NCC and a parabolic peak fit."""
     h, w = search.shape
-    tw = max(reference.shape[1] // 10, 1)
-    th = max(reference.shape[0] // 10, 1)
+    tw = candidate.template_w
+    th = candidate.template_h
+    coarse_x = candidate.x
+    coarse_y = candidate.y
     x0 = max(0, int(round(coarse_x - tw / 2.0)) - search_window)
     y0 = max(0, int(round(coarse_y - th / 2.0)) - search_window)
     x1 = min(w, int(round(coarse_x + tw / 2.0)) + search_window)
     y1 = min(h, int(round(coarse_y + th / 2.0)) + search_window)
     region = search[y0:y1, x0:x1]
-    template = cv2.resize(reference, (tw, th), interpolation=cv2.INTER_AREA)
-    if region.shape[0] <= th or region.shape[1] <= tw:
+    
+    template_base = cv2.resize(
+        reference,
+        (max(int(round(reference.shape[1] / candidate.scale)), 1),
+         max(int(round(reference.shape[0] / candidate.scale)), 1)),
+        interpolation=cv2.INTER_AREA
+    )
+    if candidate.rotation != 0.0:
+        M = cv2.getRotationMatrix2D((template_base.shape[1] / 2.0, template_base.shape[0] / 2.0), candidate.rotation, 1.0)
+        abs_cos = abs(M[0, 0])
+        abs_sin = abs(M[0, 1])
+        new_w = int(template_base.shape[0] * abs_sin + template_base.shape[1] * abs_cos)
+        new_h = int(template_base.shape[0] * abs_cos + template_base.shape[1] * abs_sin)
+        M[0, 2] += new_w / 2.0 - template_base.shape[1] / 2.0
+        M[1, 2] += new_h / 2.0 - template_base.shape[0] / 2.0
+        template = cv2.warpAffine(template_base, M, (new_w, new_h), borderMode=cv2.BORDER_REPLICATE)
+    else:
+        template = template_base
+
+    if region.shape[0] <= template.shape[0] or region.shape[1] <= template.shape[1]:
         return float(coarse_x), float(coarse_y)
     corr = cv2.matchTemplate(region, template, cv2.TM_CCOEFF_NORMED)
     _, _, _, max_loc = cv2.minMaxLoc(corr)
     dx = _parabolic_offset_1d(corr[max_loc[1], :], max_loc[0])
     dy = _parabolic_offset_1d(corr[:, max_loc[0]], max_loc[1])
     return (
-        float(np.clip(x0 + max_loc[0] + tw / 2.0 + dx, 0, w)),
-        float(np.clip(y0 + max_loc[1] + th / 2.0 + dy, 0, h)),
+        float(np.clip(x0 + max_loc[0] + template.shape[1] / 2.0 + dx, 0, w)),
+        float(np.clip(y0 + max_loc[1] + template.shape[0] / 2.0 + dy, 0, h)),
     )
 
 

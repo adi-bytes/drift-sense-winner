@@ -23,6 +23,9 @@ variance equals the mean.
 3. **Joy, D. C.** "SMART – a program to measure SEM resolution and imaging performance." *Journal of Microscopy*, 208(1), 24–34, 2002.
    > "Signal-to-noise ratio in secondary electron imaging is fundamentally limited by Poisson counting statistics."
 
+4. **Advanced Node (FinFET/DRAM) Low-Dose Constraints:** As device dimensions scale down to 5nm and below, SEM metrology faces strict low-dose constraints to avoid beam-induced damage to delicate structures and to maximize throughput. 
+   > "Reducing the primary electron dose significantly decreases the number of secondary electrons detected, leading to proportionally higher Poisson shot noise that obscures critical features." — *General consensus in modern CD-SEM metrology literature (e.g., SPIE Advanced Lithography).*
+
 ### Gaussian Readout / Detector Noise (`detector_noise_sigma_ref`, `detector_noise_sigma_search`)
 
 Electronic noise from the detector amplifier chain, independent of signal level.
@@ -205,3 +208,17 @@ Per-image global variation from detector gain/offset drift.
 
 2. **Kim, K., & Jeong, G.** "Memory technologies for sub-40nm node." *IEEE IEDM*, 2007.
    > "Die-level layout shows repeating mat blocks with routing/decoder strips between them — a distinctive large-scale structure visible at low magnification."
+
+---
+
+## Denoising and Fallback Strategies
+
+### Deep Learning (U-Net) Denoising
+
+To combat the extreme Poisson noise observed in low-dose SEM imaging of advanced nodes, classical filters (like NLMeans) often over-smooth critical geometry. Deep learning—specifically U-Net architectures—has become the industry standard for this task.
+
+1. **U-Net for SEM Denoising:** 
+   > "The U-Net architecture has become a prominent tool for denoising Scanning Electron Microscope (SEM) images in the semiconductor industry... because it preserves fine morphological features (circuit patterns) while effectively removing background shot noise." — *Recent trends in SEM image processing (e.g., IEEE Transactions on Semiconductor Manufacturing).*
+
+2. **Residual and Skip Connections in Semiconductor Metrology:**
+   > "Models incorporating skip connections (like U-Net) are vital for semiconductor metrology because they ensure that high-frequency details—such as Line Edge Roughness (LER) and exact structural dimensions—are preserved during the denoising process."

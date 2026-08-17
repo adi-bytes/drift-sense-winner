@@ -31,7 +31,7 @@ import cv2
 import numpy as np
 
 from src.matcher.coarse_matcher import Candidate, coarse_match
-from src.matcher.refine import refine_subpixel
+from src.matcher.refine import refine_location
 
 
 def _preprocess(img: np.ndarray) -> np.ndarray:
@@ -102,36 +102,69 @@ def localize(
 
     # --- Coarse Match ---
     t0 = time.perf_counter()
-    candidates = coarse_match(ref_proc, search_proc, scales=(10.0,))
+    candidates = coarse_match(ref_proc, search_proc)
     t_coarse = time.perf_counter() - t0
     logger.info("Coarse match: %.3fs (%d candidates)", t_coarse, len(candidates))
-
-    best_candidate = candidates[0] if candidates else None
-    if best_candidate is None:
-        h, w = search_proc.shape
-        best_candidate = Candidate(
-            x=w / 2.0, y=h / 2.0, score=0.0, scale=10.0,
-            template_w=max(ref_proc.shape[1] // 10, 1),
-            template_h=max(ref_proc.shape[0] // 10, 1),
+    
+    # Adaptive Cascade Router
+    initial_max = candidates[0].score if candidates else 0.0
+    if initial_max < 0.35:
+        logger.warning(
+            "WARNING_SEVERE_NOISE_OR_OOD: Triggering Heavy Fallback Pipeline (score=%.3f)", 
+            initial_max
         )
-    confidence = 1.0
-    selected_method = "coarse_best"
+        t_fb = time.perf_counter()
+        from src.matcher.fallback import heavy_match
+        candidates, ref_proc, search_proc = heavy_match(reference, search)
+        logger.info("Fallback execution time: %.3fs", time.perf_counter() - t_fb)
+
+    # --- Disambiguation & Refinement ---
+    t0 = time.perf_counter()
+    
+    # Defaults for diagnostics
     is_periodic = False
     periodic_strength = 0.0
     period_px = (0, 0)
-    verification_score = best_candidate.score
+    selected_method = "coarse_best"
+    verification_score = 0.0
     t_disambig = 0.0
-
-    # --- Sub-pixel Refinement ---
-    t0 = time.perf_counter()
-    refined_x, refined_y = refine_subpixel(
-        ref_proc,
-        search_proc,
-        best_candidate.x,
-        best_candidate.y,
-    )
+    
+    if not candidates:
+        h, w = search_proc.shape
+        refined_x, refined_y = w / 2.0, h / 2.0
+        confidence = 0.0
+    else:
+        refined_results = []
+        for c in candidates:
+            rx, ry, rscore = refine_location(ref_proc, search_proc, c)
+            refined_results.append((rx, ry, rscore, c))
+            
+        max_rscore = max(r[2] for r in refined_results)
+        # Perfect tie is within 0.1% (0.001) in ZNCC space
+        tied_refined = [r for r in refined_results if r[2] >= max_rscore - 0.001]
+        
+        h, w = search_proc.shape
+        cx, cy = w / 2.0, h / 2.0
+        # Break ties using center proximity
+        final_choice = min(tied_refined, key=lambda r: np.hypot(r[0] - cx, r[1] - cy))
+        
+        refined_x, refined_y = final_choice[0], final_choice[1]
+        confidence = float(final_choice[2])
+        
+        # Diagnostic Engine Extraction
+        max_score = candidates[0].score if candidates else 0.0
+        aliasing_ratio = (candidates[1].score / max_score) if len(candidates) > 1 and max_score > 0 else 0.0
+        
+        # Determine Preemptive Confidence Label
+        if max_score < 0.35:
+            confidence_label = "WARNING_SEVERE_NOISE_OR_OOD"
+        elif aliasing_ratio > 0.95:
+            confidence_label = "WARNING_ALIASING_RISK"
+        else:
+            confidence_label = "HIGH_CONFIDENCE"
+        
     t_refine = time.perf_counter() - t0
-    logger.info("Refinement: %.3fs", t_refine)
+    logger.info("Refinement & Disambiguation: %.3fs", t_refine)
 
     t_total_elapsed = time.perf_counter() - t_total
     logger.info(
@@ -151,8 +184,9 @@ def localize(
         "period_px": period_px,
         "verification_score": verification_score,
         "method": selected_method,
-        "rotation_angle": 0.0,
-        "boundary_score": 0.0,
+        "max_zncc_score": max_score if 'max_score' in locals() else 0.0,
+        "aliasing_ratio": aliasing_ratio if 'aliasing_ratio' in locals() else 0.0,
+        "confidence_label": confidence_label if 'confidence_label' in locals() else "FAILURE_NO_CANDIDATES",
         "timings": {},
     }
     if return_diagnostics:
