@@ -269,6 +269,22 @@ def _save_accuracy_chart(
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close()
 
+def _save_predictions_csv(results: list[dict], output_path: str) -> None:
+    """Export all predictions and ground truths to a CSV file."""
+    if not results:
+        return
+    
+    fieldnames = [
+        "id", "architecture", "error", "gt_x", "gt_y", "pred_x", "pred_y", 
+        "time", "confidence_label", "is_periodic"
+    ]
+    
+    with open(output_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for r in results:
+            writer.writerow(r)
+
 
 def _save_error_histogram(errors: list[float], output_path: str) -> None:
     """Histogram of prediction errors."""
@@ -518,6 +534,9 @@ def main() -> None:
     )
     _save_summary(
         results, os.path.join(args.output_dir, "results_summary.txt"), args.tolerance_px
+    )
+    _save_predictions_csv(
+        results, os.path.join(args.output_dir, "predictions.csv")
     )
 
     # Print summary to stdout

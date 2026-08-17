@@ -1,6 +1,7 @@
 import streamlit as st
 import subprocess
 import os
+import pandas as pd
 
 st.set_page_config(page_title="Drift-Sense Dashboard", layout="wide")
 
@@ -81,6 +82,38 @@ with col2:
                 else:
                     st.error("Error running evaluation.")
                     st.code(result.stderr)
+
+st.markdown("---")
+st.header("📊 Evaluation Analysis")
+
+if os.path.exists(results_dir):
+    tab1, tab2 = st.tabs(["Predictions Table", "Failure Analysis"])
+    
+    with tab1:
+        st.subheader("Ground Truth vs Predicted Locations")
+        predictions_path = os.path.join(results_dir, "predictions.csv")
+        if os.path.exists(predictions_path):
+            df = pd.read_csv(predictions_path)
+            st.dataframe(df, use_container_width=True)
+        else:
+            st.info("Run Evaluation to generate the predictions table.")
+            
+    with tab2:
+        st.subheader("Why did the engine fail?")
+        failure_txt_path = os.path.join(results_dir, "failure_analysis.txt")
+        failure_img_path = os.path.join(results_dir, "failure_case.png")
+        
+        if os.path.exists(failure_txt_path):
+            with open(failure_txt_path, "r") as f:
+                failure_text = f.read()
+            st.text(failure_text)
+        else:
+            st.info("No failure analysis found.")
+            
+        if os.path.exists(failure_img_path):
+            st.image(failure_img_path, use_container_width=True, caption="Worst Failure Case")
+else:
+    st.info("Run Evaluation above to unlock the Analysis section!")
 
 st.markdown("---")
 st.header("🖼️ Dataset Image Viewer")
