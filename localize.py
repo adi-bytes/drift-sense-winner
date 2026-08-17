@@ -30,20 +30,27 @@ import time
 import cv2
 import numpy as np
 
-from src.matcher.coarse_matcher import Candidate, coarse_match
+from src.matcher.coarse_matcher import Candidate, coarse_match, CENTER_SELECTION_SCALES
 from src.matcher.refine import refine_location
+from src.matcher.strip_anchor import strip_anchor_match
 
 
 def _preprocess(img: np.ndarray) -> np.ndarray:
-    """Preprocess image preserving physical scale relationships.
+    """Preprocess image for cross-scale ZNCC matching.
 
-    Uses global min-max normalization to handle dose differences without
-    distorting local spatial contrast ratios, followed by Gaussian smoothing
-    (5x5, sigma=1.5) to suppress Poisson shot noise and detector noise without
-    inducing non-linear edge artifacts.
+    CLAHE is explicitly avoided here: it uses tile-based local normalization,
+    which applies different non-linear transforms to the reference (1nm/px tiles)
+    and the search (10nm/px tiles), completely destroying cross-image correlation.
+
+    Instead we use:
+    1. Global min-max normalization (dose-invariant, preserves relative contrast)
+    2. Bilateral filter (edge-preserving denoising, better than Gaussian at high noise)
+    REF: Tomasi & Manduchi (1998) -- bilateral filter standard for SEM denoising.
     """
     norm = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX)
-    filtered = cv2.GaussianBlur(norm, (5, 5), 1.5)
+    # Bilateral: d=9, sigmaColor=30, sigmaSpace=15
+    # Stronger than original Gaussian(5,5) but edge-preserving for noisy Level 4-6 images
+    filtered = cv2.bilateralFilter(norm, d=7, sigmaColor=25, sigmaSpace=10)
     return filtered
 
 
@@ -105,12 +112,31 @@ def localize(
     candidates = coarse_match(ref_proc, search_proc)
     t_coarse = time.perf_counter() - t0
     logger.info("Coarse match: %.3fs (%d candidates)", t_coarse, len(candidates))
-    
-    # Adaptive Cascade Router
+
+    # --- Strategy 1: Strip Anchor (ONLY when ZNCC is ambiguous) ---
+    # Strip anchor is expensive in terms of false positives when ZNCC is already confident.
+    # Only run it when ZNCC has multiple high-scoring candidates (aliasing risk).
     initial_max = candidates[0].score if candidates else 0.0
+    aliasing_ratio = (candidates[1].score / initial_max) if len(candidates) > 1 and initial_max > 0 else 0.0
+    zncc_is_unambiguous = initial_max > 0.45 and aliasing_ratio < 0.88
+    
+    strip_result = None
+    if not zncc_is_unambiguous and initial_max >= 0.35:
+        # ZNCC is ambiguous — try strip anchor to resolve it
+        t0 = time.perf_counter()
+        strip_result = strip_anchor_match(reference, search)
+        t_strip = time.perf_counter() - t0
+        if strip_result is not None:
+            logger.info(
+                "Strip anchor fired (conf=%.3f, dir=%s) → (%.1f, %.1f) [%.3fs]",
+                strip_result.confidence, strip_result.direction,
+                strip_result.x, strip_result.y, t_strip
+            )
+    
+    # Adaptive Cascade Router: heavy fallback when ZNCC finds nothing
     if initial_max < 0.35:
         logger.warning(
-            "WARNING_SEVERE_NOISE_OR_OOD: Triggering Heavy Fallback Pipeline (score=%.3f)", 
+            "WARNING_SEVERE_NOISE_OR_OOD: Triggering Heavy Fallback Pipeline (score=%.3f)",
             initial_max
         )
         t_fb = time.perf_counter()
@@ -133,23 +159,58 @@ def localize(
         h, w = search_proc.shape
         refined_x, refined_y = w / 2.0, h / 2.0
         confidence = 0.0
+    elif strip_result is not None and strip_result.confidence >= 0.15:
+        # Strategy 1 wins: strip anchor gives us an unambiguous location
+        # Guard: only trust strip anchor when combined confidence is meaningful
+        logger.info("Using strip anchor result (conf=%.3f)", strip_result.confidence)
+        from src.matcher.coarse_matcher import Candidate as Cand
+        anchor_cand = Cand(
+            x=strip_result.x, y=strip_result.y, score=strip_result.confidence,
+            scale=10.0, template_w=100, template_h=100, rotation=0.0
+        )
+        rx, ry, rscore = refine_location(ref_proc, search_proc, anchor_cand)
+        refined_x, refined_y = rx, ry
+        confidence = float(rscore)
+        selected_method = "strip_anchor"
     else:
-        refined_results = []
-        for c in candidates:
-            rx, ry, rscore = refine_location(ref_proc, search_proc, c)
-            refined_results.append((rx, ry, rscore, c))
-            
-        max_rscore = max(r[2] for r in refined_results)
-        # Perfect tie is within 0.1% (0.001) in ZNCC space
-        tied_refined = [r for r in refined_results if r[2] >= max_rscore - 0.001]
+        # No strip anchor available — use multi-scale ZNCC voting to pick the most
+        # consistent candidate across multiple template scales. The correct peak is the
+        # one that is stably top-ranked across scales; aliasing peaks tend to drop out
+        # at scales that don't match the template exactly.
+        from src.matcher.coarse_matcher import coarse_match as _cm
+        vote_counts: dict[tuple[int,int], int] = {}
+        for sc in CENTER_SELECTION_SCALES:
+            vc = _cm(ref_proc, search_proc, scales=(sc,), max_candidates=5)
+            for c in vc[:3]:
+                key = (int(round(c.x / 5) * 5), int(round(c.y / 5) * 5))
+                vote_counts[key] = vote_counts.get(key, 0) + 1
         
-        h, w = search_proc.shape
-        cx, cy = w / 2.0, h / 2.0
-        # Break ties using center proximity
-        final_choice = min(tied_refined, key=lambda r: np.hypot(r[0] - cx, r[1] - cy))
+        # Find candidate bin with highest vote count
+        best_voted_key = max(vote_counts, key=vote_counts.get) if vote_counts else None
         
-        refined_x, refined_y = final_choice[0], final_choice[1]
-        confidence = float(final_choice[2])
+        if best_voted_key is not None and vote_counts[best_voted_key] >= 3:
+            # Strong multi-scale consensus — find the actual candidate closest to this bin
+            bvx, bvy = best_voted_key
+            voted_cand = min(candidates, key=lambda c: (int(round(c.x/5)*5) - bvx)**2 + (int(round(c.y/5)*5) - bvy)**2)
+            rx, ry, rscore = refine_location(ref_proc, search_proc, voted_cand)
+            refined_x, refined_y = rx, ry
+            confidence = float(rscore)
+            selected_method = "multiscale_vote"
+            logger.info("Multi-scale vote consensus: (%.1f, %.1f) with %d votes", rx, ry, vote_counts[best_voted_key])
+        else:
+            # Final fallback: center-proximity tie-breaking
+            refined_results = []
+            for c in candidates:
+                rx, ry, rscore = refine_location(ref_proc, search_proc, c)
+                refined_results.append((rx, ry, rscore, c))
+            max_rscore = max(r[2] for r in refined_results)
+            tied_refined = [r for r in refined_results if r[2] >= max_rscore - 0.001]
+            h, w = search_proc.shape
+            cx, cy = w / 2.0, h / 2.0
+            final_choice = min(tied_refined, key=lambda r: np.hypot(r[0] - cx, r[1] - cy))
+            refined_x, refined_y = final_choice[0], final_choice[1]
+            confidence = float(final_choice[2])
+            selected_method = "center_proximity"
         
         # Diagnostic Engine Extraction
         max_score = candidates[0].score if candidates else 0.0

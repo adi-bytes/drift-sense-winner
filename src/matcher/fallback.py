@@ -16,7 +16,7 @@ import numpy as np
 import torch
 import os
 
-from src.matcher.coarse_matcher import Candidate
+from src.matcher.coarse_matcher import Candidate, _find_local_maxima, disambiguate_candidates
 from src.models.unet import SEMUNet
 
 logger = logging.getLogger(__name__)
@@ -89,20 +89,28 @@ def heavy_match(
     # 3. ZNCC Correlation
     corr_map = cv2.matchTemplate(search_clean, template, cv2.TM_CCOEFF_NORMED)
 
-    # Just take raw ZNCC for now to see if U-Net solves it without the prior
-    py, px = np.unravel_index(np.argmax(corr_map), corr_map.shape)
-    score = float(corr_map[py, px])
-
-    logger.info(f"Bayesian MAP peak found at ({px}, {py}) with raw ZNCC score: {score:.3f}")
-
-    best_candidate = Candidate(
-        x=px + tw / 2.0,
-        y=py + th / 2.0,
-        score=score,
-        scale=scale,
-        template_w=tw,
-        template_h=th,
-        rotation=0.0
-    )
+    # 4. Extract peaks and disambiguate ties (just like the fast path)
+    peaks = _find_local_maxima(corr_map, min_distance=5, threshold=0.1, max_peaks=50)
+    
+    candidates = []
+    for (px, py, score) in peaks:
+        candidates.append(Candidate(
+            x=px + tw / 2.0,
+            y=py + th / 2.0,
+            score=score,
+            scale=scale,
+            template_w=tw,
+            template_h=th,
+            rotation=0.0
+        ))
+        
+    if not candidates:
+        logger.warning("U-Net ZNCC found no peaks. Falling back to image center.")
+        h, w = search_clean.shape
+        best_candidate = Candidate(w / 2.0, h / 2.0, 0.0, scale, tw, th, 0.0)
+    else:
+        # Break ties using center proximity to minimize expected error on periodic structures
+        best_candidate = disambiguate_candidates(candidates, search_clean.shape[1], search_clean.shape[0])
+        logger.info(f"Fallback ZNCC resolved to ({best_candidate.x:.1f}, {best_candidate.y:.1f}) with score: {best_candidate.score:.3f}")
 
     return [best_candidate], ref_clean, search_clean
