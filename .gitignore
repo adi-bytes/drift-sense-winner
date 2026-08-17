@@ -16,6 +16,9 @@ data_*/
 results/
 results_*/
 unet_boundary_test/
+new_data/
+original/
+output/
 
 # OS generated files
 .DS_Store
