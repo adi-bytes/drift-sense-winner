@@ -51,7 +51,7 @@ with col2:
     if st.button("Run Evaluation", use_container_width=True):
         st.info("Running evaluation pipeline...")
         
-        manifest_path = os.path.join(output_dir, "manifest.csv")
+        manifest_path = os.path.join(output_dir, "test", "manifest.csv")
         
         if not os.path.exists(manifest_path):
             st.error(f"Manifest file not found at {manifest_path}. Please generate the dataset first.")
@@ -81,3 +81,35 @@ with col2:
                 else:
                     st.error("Error running evaluation.")
                     st.code(result.stderr)
+
+st.markdown("---")
+st.header("🖼️ Dataset Image Viewer")
+
+test_dir = os.path.join(output_dir, "test")
+if os.path.exists(test_dir):
+    # Find all reference images to determine available samples
+    ref_dir = os.path.join(test_dir, "reference")
+    if os.path.exists(ref_dir):
+        images = sorted([f for f in os.listdir(ref_dir) if f.endswith(".png")])
+        if images:
+            selected_img = st.selectbox("Select a sample to view:", images)
+            
+            col_ref, col_search = st.columns(2)
+            
+            with col_ref:
+                st.subheader("Reference Image")
+                st.write("(Clean, 1nm/pixel, High Dose)")
+                st.image(os.path.join(ref_dir, selected_img), use_container_width=True)
+                
+            with col_search:
+                st.subheader("Search Image")
+                st.write("(Drifted, 10nm/pixel, Low Dose)")
+                search_path = os.path.join(test_dir, "search", selected_img)
+                if os.path.exists(search_path):
+                    st.image(search_path, use_container_width=True)
+                else:
+                    st.error("Search image not found.")
+        else:
+            st.info("No images found in the dataset folder.")
+else:
+    st.info("Generate a dataset above to unlock the Image Viewer!")
