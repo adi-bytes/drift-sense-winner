@@ -19,6 +19,12 @@ unet_boundary_test/
 new_data/
 original/
 output/
+scratch_baseline/
+test_data_gen_test/
+data_accuracy_test/
+data_bench*/
+results_bench*/
+results_accuracy*/
 
 # OS generated files
 .DS_Store
