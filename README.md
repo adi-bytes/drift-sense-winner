@@ -1,3 +1,13 @@
+---
+title: Drift-Sense
+emoji: 🔬
+colorFrom: blue
+colorTo: indigo
+sdk: streamlit
+app_file: ui.py
+pinned: false
+---
+
 # Drift-Sense: Wafer Navigation-Error Recovery
 
 **SEMICON India Hackathon 2026 — Track 2 (Applied Materials Challenge)**
