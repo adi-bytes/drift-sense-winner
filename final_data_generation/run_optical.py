@@ -81,9 +81,12 @@ def main():
             sy0 = int(ref_cy - 5000 + stage_err_y)
             search_fine = fine_canvas[sy0:sy0+10000, sx0:sx0+10000]
             
-            # Generate optical search at 1nm/px physically, then downsample to sensor resolution
-            search_img_1nm = simulate_rgb_wafer_image(search_fine, thickness_map[sy0:sy0+10000, sx0:sx0+10000], pixel_size_nm=1.0, defocus_nm=40.0, photon_flux=8000, seed=sample_seed)
-            search_img = cv2.resize(search_img_1nm, (1000, 1000), interpolation=cv2.INTER_AREA)
+            # PERFORMANCE OPTIMIZATION: Downsample topography FIRST before physics simulation
+            search_fine_10nm = cv2.resize(search_fine, (1000, 1000), interpolation=cv2.INTER_AREA)
+            thickness_slice = thickness_map[sy0:sy0+10000, sx0:sx0+10000]
+            thickness_10nm = cv2.resize(thickness_slice, (1000, 1000), interpolation=cv2.INTER_AREA)
+            
+            search_img = simulate_rgb_wafer_image(search_fine_10nm, thickness_10nm, pixel_size_nm=10.0, defocus_nm=40.0, photon_flux=8000, seed=sample_seed)
             
             # Ground truth in search space
             gt_cx_search = (ref_cx - sx0) / 10.0
