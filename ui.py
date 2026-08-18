@@ -31,7 +31,7 @@ else:
 severity = None
 advanced_args = []
 
-if config_mode == "Severity Curriculum (Easy)":
+if config_mode == "Severity Curriculum (Levels)":
     severity = st.sidebar.slider("Severity Level (0-6)", min_value=0, max_value=6, value=2, 
                                 help="0=Ideal, 6=Extreme Drift & Noise")
 else:
