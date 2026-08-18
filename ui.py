@@ -2,6 +2,12 @@ import os
 import sys
 import subprocess
 
+try:
+    import cv2
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "opencv-python-headless"])
+    import cv2
+
 import pandas as pd
 import streamlit as st
 
