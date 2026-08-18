@@ -1,4 +1,5 @@
 import os
+import sys
 import subprocess
 
 import pandas as pd
@@ -88,7 +89,7 @@ with tab1:
             
         script = "final_data_generation.run_optical" if "RGB" in track_mode else "final_data_generation.run"
         cmd = [
-            "python3", "-m", script,
+            sys.executable, "-m", script,
             "--num-dram", str(num_dram),
             "--num-finfet", str(num_finfet),
             "--output-dir", output_dir
@@ -157,7 +158,7 @@ with tab2:
         else:
             tol_px = "15" if "RGB" in track_mode else "5"
             cmd = [
-                "python3", "evaluate.py",
+                sys.executable, "evaluate.py",
                 "--manifest", manifest_path,
                 "--tolerance-px", tol_px,
                 "--output-dir", results_dir
