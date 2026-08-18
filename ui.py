@@ -15,8 +15,8 @@ st.sidebar.header("Configuration")
 # Track Mode
 track_mode = st.sidebar.radio("Target Modality", ["Grayscale (SEM)", "RGB (Optical)"])
 
-# Customization Mode
-config_mode = st.sidebar.radio("Customization Mode", ["Severity Curriculum (Levels)", "Advanced Customization (Full Physics)"])
+severity = None
+advanced_args = []
 
 # Batch or Single
 batch_mode = st.sidebar.radio("Generation Mode", ["Single Image", "Batch Mode"])
@@ -28,30 +28,34 @@ else:
     num_dram = st.sidebar.number_input("Number of DRAM Samples", min_value=0, max_value=250, value=5)
     num_finfet = st.sidebar.number_input("Number of FinFET Samples", min_value=0, max_value=250, value=5)
 
-severity = None
-advanced_args = []
+if "SEM" in track_mode:
+    # Customization Mode
+    config_mode = st.sidebar.radio("Customization Mode", ["Severity Curriculum (Levels)", "Advanced Customization (Full Physics)"])
 
-if config_mode == "Severity Curriculum (Levels)":
-    severity = st.sidebar.slider("Severity Level (0-6)", min_value=0, max_value=6, value=2, 
-                                help="0=Ideal, 6=Extreme Drift & Noise")
+    if config_mode == "Severity Curriculum (Levels)":
+        severity = st.sidebar.slider("Severity Level (0-6)", min_value=0, max_value=6, value=2, 
+                                    help="0=Ideal, 6=Extreme Drift & Noise")
+    else:
+        st.sidebar.markdown("### Advanced Physics Knobs")
+        dose_ref = st.sidebar.slider("Reference Dose (higher = cleaner)", 500, 5000, 2000)
+        dose_search = st.sidebar.slider("Search Dose (higher = cleaner)", 50, 2000, 200)
+        stage_drift = st.sidebar.slider("Stage Placement Error (px)", 0, 450, 50,
+                                       help="Simulates macro-stage navigation errors")
+        shear_amp = st.sidebar.slider("Temporal Drift Amplitude (px)", 0.0, 10.0, 1.5,
+                                     help="Smooth raster drift shear")
+        noise_sigma = st.sidebar.slider("Electronic Noise Sigma", 0.0, 25.0, 5.0)
+        spot_size = st.sidebar.slider("Beam Spot Size (nm)", 1.0, 20.0, 5.0)
+        advanced_args = [
+            "--dose-reference", str(dose_ref),
+            "--dose-search", str(dose_search),
+            "--stage-drift-px", str(stage_drift),
+            "--drift-amplitude-px", str(shear_amp),
+            "--correlated-noise-sigma", str(noise_sigma),
+            "--beam-spot-size-nm", str(spot_size),
+        ]
 else:
-    st.sidebar.markdown("### Advanced Physics Knobs")
-    dose_ref = st.sidebar.slider("Reference Dose (higher = cleaner)", 500, 5000, 2000)
-    dose_search = st.sidebar.slider("Search Dose (higher = cleaner)", 50, 2000, 200)
-    stage_drift = st.sidebar.slider("Stage Placement Error (px)", 0, 450, 50,
-                                   help="Simulates macro-stage navigation errors")
-    shear_amp = st.sidebar.slider("Temporal Drift Amplitude (px)", 0.0, 10.0, 1.5,
-                                 help="Smooth raster drift shear")
-    noise_sigma = st.sidebar.slider("Electronic Noise Sigma", 0.0, 25.0, 5.0)
-    spot_size = st.sidebar.slider("Beam Spot Size (nm)", 1.0, 20.0, 5.0)
-    advanced_args = [
-        "--dose-reference", str(dose_ref),
-        "--dose-search", str(dose_search),
-        "--stage-drift-px", str(stage_drift),
-        "--drift-amplitude-px", str(shear_amp),
-        "--correlated-noise-sigma", str(noise_sigma),
-        "--beam-spot-size-nm", str(spot_size),
-    ]
+    config_mode = None
+    st.sidebar.info("Optical Physics uses a fixed curriculum. Customization is disabled.")
 
 st.sidebar.markdown("---")
 default_out = "./data_streamlit_opt" if "RGB" in track_mode else "./data_streamlit_sem"
@@ -75,7 +79,9 @@ with tab1:
         
     if generate_clicked:
         total_samples = num_dram + num_finfet
-        if config_mode == "Severity Curriculum (Levels)":
+        if "RGB" in track_mode:
+            st.info(f"Generating {total_samples} Optical (RGB) samples with fixed physics...")
+        elif config_mode == "Severity Curriculum (Levels)":
             st.info(f"Generating {total_samples} samples at Severity {severity}...")
         else:
             st.info(f"Generating {total_samples} custom physics samples...")
