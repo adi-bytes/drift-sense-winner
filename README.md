@@ -57,8 +57,7 @@ Our algorithm achieves sub-pixel accuracy in under 200ms per image pair, relying
 In the remaining ~17% of extreme SEM cases, our system correctly flags a `WARNING_ALIASING_RISK`. The root cause is **perfect periodicity**: if you take a tiny 100x100 pixel reference crop from the dead center of a massive DRAM array (which repeats perfectly every 10 pixels), and drift it by 400 pixels, it is physically and mathematically impossible to know which exact block you are looking at without wider macro-context. The algorithm isn't broken; it is hitting the mathematical limit of the data provided. 
 
 Detailed analysis of our datasets and failure modes can be found in:
-- `dataset_rationale_sem.md`
-- `dataset_rationale_opt.md`
+- `final_submission_dataset/dataset_rationale.md`
 
 ---
 
@@ -69,6 +68,8 @@ drift-sense-winner/
 ├── README.md                   # You are reading this!
 ├── requirements.txt            # Required Python packages
 ├── CITATIONS.md                # Academic physics papers backing our dataset generator
+├── METHODOLOGY.md              # Detailed pipeline architecture & strategy
+├── PRESENTATION_SCRIPT.md      # Pitch script for judges
 ├── ui.py                       # The Streamlit Visual Dashboard
 │
 ├── localize.py                 # MAIN INFERENCE SCRIPT (The core routing engine)

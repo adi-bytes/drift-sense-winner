@@ -127,8 +127,8 @@ def coarse_match(
     all_candidates: list[Candidate] = []
 
     for scale in scales:
-        tw = max(int(round(reference.shape[1] / scale)), 1)
-        th = max(int(round(reference.shape[0] / scale)), 1)
+        tw = max(round(reference.shape[1] / scale), 1)
+        th = max(round(reference.shape[0] / scale), 1)
 
         # Template must be smaller than search image
         if tw >= search.shape[1] or th >= search.shape[0]:
@@ -248,8 +248,8 @@ def find_center_peak(
     unique_centers: list[tuple[float, float]] = []
 
     for scale in scales:
-        tw = max(int(round(reference.shape[1] / scale)), 1)
-        th = max(int(round(reference.shape[0] / scale)), 1)
+        tw = max(round(reference.shape[1] / scale), 1)
+        th = max(round(reference.shape[0] / scale), 1)
         if tw >= w or th >= h:
             continue
         template = cv2.resize(reference, (tw, th), interpolation=cv2.INTER_AREA)

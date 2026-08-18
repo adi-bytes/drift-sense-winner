@@ -24,7 +24,7 @@ The project has been aggressively cleaned up to contain only the absolute necess
     *   `src/matcher/coarse_matcher.py`: The classical Zero-mean Normalized Cross-Correlation (ZNCC) logic.
     *   `src/matcher/strip_anchor.py`: The 1D macroscopic variance logic (used to break ties when ZNCC fails on repeating patterns).
     *   `src/matcher/optical_matcher.py`: The specialized Global LAB Chrominance solver for RGB images.
-    *   `src/matcher/refine.py`: The sub-pixel Lucas-Kanade quadratic refinement mathematics.
+    *   `src/matcher/refine.py`: Sub-pixel refinement via upsampled ZNCC and separable parabolic interpolation.
 *   `final_data_generation/`: The physics engine that creates synthetic wafers from scratch, applies physics effects, and generates the massive image pairs.
     *   `sem_physics.py` / `optical_physics.py`: Contains the actual physical math (Poisson noise, charging, Airy disk diffraction).
     *   `geometry.py`: Generates the underlying DRAM and FinFET layouts.
@@ -58,7 +58,7 @@ Your pipeline operates in two distinct phases: **Generation** and **Inference**.
 3.  **The Adaptive Router (The Secret Weapon):** 
     *   If ZNCC returns one clear peak, we win.
     *   If ZNCC returns multiple identical peaks (aliasing), the engine detects this ambiguity (Top 2 peaks are >95% identical) and routes the image to the **Strip Anchor** fallback. The Strip Anchor calculates massive 1D macroscopic variances to find giant layout boundaries (like the edge of a memory mat) to break the tie.
-4.  **Sub-Pixel Refinement:** Using a localized Lucas-Kanade 2D quadratic fit, the integer pixel coordinate is refined to fractional precision (e.g., `x=402.15`).
+4.  **Sub-Pixel Refinement:** Using 4× upsampled ZNCC on a local patch followed by separable parabolic interpolation (fitting a 1D parabola through 3 neighboring correlation values along each axis), the integer pixel coordinate is refined to fractional precision (e.g., `x=402.15`).
 
 ### Phase C: Evaluation & Explainability
 *Goal: Grade the algorithm and prove we understand its limitations.*

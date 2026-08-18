@@ -353,7 +353,7 @@ def add_charging_streaks(
     """Horizontal charging streaks (insulator charging artifact)."""
     if streak_prob <= 0 or intensity <= 0:
         return img
-    h, w = img.shape
+    h, _w = img.shape
     out = img.astype(np.float64)
     n_streaks = rng.poisson(max(streak_prob * (h / 100.0), 0))
     for _ in range(n_streaks):
@@ -502,7 +502,7 @@ def image_search(
     14. Rotation (stage misalignment)
     15. Brightness/contrast jitter
     """
-    factor = int(round(pixel_size_search_nm / pixel_size_ref_nm))
+    factor = round(pixel_size_search_nm / pixel_size_ref_nm)
     canvas_e = apply_edge_brightening(full_canvas, edge_brightness_gain)
     blurred = gaussian_psf_blur(canvas_e, spot_size_nm, pixel_size_ref_nm, astigmatism_ratio)
     downsampled = downsample_area_average(blurred, factor)

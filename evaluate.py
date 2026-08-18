@@ -58,8 +58,8 @@ def _draw_box(
     thickness: int = 2,
 ) -> np.ndarray:
     """Draw a rectangle on a BGR image."""
-    x0, y0 = int(round(x - w / 2)), int(round(y - h / 2))
-    x1, y1 = int(round(x + w / 2)), int(round(y + h / 2))
+    x0, y0 = round(x - w / 2), round(y - h / 2)
+    x1, y1 = round(x + w / 2), round(y + h / 2)
     cv2.rectangle(img, (x0, y0), (x1, y1), color, thickness)
     return img
 
@@ -162,8 +162,8 @@ def _save_failure_case(
 
     # Zoomed comparison
     if search is not None:
-        zoom_cx = int(round(worst["gt_x"]))
-        zoom_cy = int(round(worst["gt_y"]))
+        zoom_cx = round(worst["gt_x"])
+        zoom_cy = round(worst["gt_y"])
         zoom_r = 80
         y0 = max(zoom_cy - zoom_r, 0)
         y1 = min(zoom_cy + zoom_r, search.shape[0])
@@ -556,7 +556,7 @@ def main() -> None:
     print(f"\n{'=' * 50}")
     print(f"RESULTS SUMMARY ({len(results)} samples)")
     print(f"{'=' * 50}")
-    print(f"\nCONFUSION MATRIX (Matches vs Mismatches)")
+    print("\nCONFUSION MATRIX (Matches vs Mismatches)")
     print("-" * 55)
     print(f"{'Tolerance':<12} | {'Match (TP)':<12} | {'Mismatch (FP)':<15} | {'Accuracy':<10}")
     print("-" * 55)

@@ -12,7 +12,6 @@ from scipy.ndimage import maximum_filter
 from src.matcher.boundary import boundary_score_with_rotation
 from src.matcher.rotation import estimate_rotation_between, rotate_image
 
-
 FINAL_SCALES: tuple[float, ...] = (9.0, 9.5, 9.8, 10.0, 10.2, 10.5, 11.0)
 
 
@@ -36,8 +35,8 @@ def match_final(
     candidates: list[dict[str, Any]] = []
     zncc_start = time.perf_counter()
     for scale in scales:
-        tw = max(int(round(reference_rotated.shape[1] / scale)), 1)
-        th = max(int(round(reference_rotated.shape[0] / scale)), 1)
+        tw = max(round(reference_rotated.shape[1] / scale), 1)
+        th = max(round(reference_rotated.shape[0] / scale), 1)
         if tw >= search_w or th >= search_h:
             continue
         template = cv2.resize(reference_rotated, (tw, th), interpolation=cv2.INTER_AREA)
@@ -65,8 +64,8 @@ def match_final(
     for candidate in candidates[:15]:
         tw, th = int(candidate["template_w"]), int(candidate["template_h"])
         cx, cy = candidate["x"], candidate["y"]
-        x0 = max(0, int(round(cx - tw / 2.0)))
-        y0 = max(0, int(round(cy - th / 2.0)))
+        x0 = max(0, round(cx - tw / 2.0))
+        y0 = max(0, round(cy - th / 2.0))
         x1, y1 = min(search_w, x0 + tw), min(search_h, y0 + th)
         patch = search[y0:y1, x0:x1]
         if patch.size == 0:
