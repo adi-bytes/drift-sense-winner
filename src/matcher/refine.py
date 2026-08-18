@@ -57,16 +57,16 @@ def refine_subpixel(
     th = candidate.template_h
     coarse_x = candidate.x
     coarse_y = candidate.y
-    x0 = max(0, int(round(coarse_x - tw / 2.0)) - search_window)
-    y0 = max(0, int(round(coarse_y - th / 2.0)) - search_window)
-    x1 = min(w, int(round(coarse_x + tw / 2.0)) + search_window)
-    y1 = min(h, int(round(coarse_y + th / 2.0)) + search_window)
+    x0 = max(0, round(coarse_x - tw / 2.0) - search_window)
+    y0 = max(0, round(coarse_y - th / 2.0) - search_window)
+    x1 = min(w, round(coarse_x + tw / 2.0) + search_window)
+    y1 = min(h, round(coarse_y + th / 2.0) + search_window)
     region = search[y0:y1, x0:x1]
     
     template_base = cv2.resize(
         reference,
-        (max(int(round(reference.shape[1] / candidate.scale)), 1),
-         max(int(round(reference.shape[0] / candidate.scale)), 1)),
+        (max(round(reference.shape[1] / candidate.scale), 1),
+         max(round(reference.shape[0] / candidate.scale), 1)),
         interpolation=cv2.INTER_AREA
     )
     if candidate.rotation != 0.0:
@@ -157,10 +157,10 @@ def refine_location(
     half_w = candidate.template_w / 2.0 + padding
     half_h = candidate.template_h / 2.0 + padding
 
-    x0 = max(int(round(candidate.x - half_w)), 0)
-    y0 = max(int(round(candidate.y - half_h)), 0)
-    x1 = min(int(round(candidate.x + half_w)), w)
-    y1 = min(int(round(candidate.y + half_h)), h)
+    x0 = max(round(candidate.x - half_w), 0)
+    y0 = max(round(candidate.y - half_h), 0)
+    x1 = min(round(candidate.x + half_w), w)
+    y1 = min(round(candidate.y + half_h), h)
 
     patch = search[y0:y1, x0:x1]
 

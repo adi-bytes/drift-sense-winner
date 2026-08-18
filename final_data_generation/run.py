@@ -19,20 +19,24 @@ import argparse
 import csv
 import logging
 import os
-import sys
 import time
 from dataclasses import asdict, dataclass
 
 import cv2
 import numpy as np
 
+from final_data_generation.geometry import generate_zone_canvas
+
 # Self-contained imports from within the package
 from final_data_generation.presets import (
-    PRESETS, get_preset, presets_for_kind, get_severity_params
+    PRESETS,
+    get_preset,
+    get_severity_params,
 )
-from final_data_generation.geometry import generate_zone_canvas
 from final_data_generation.sem_physics import (
-    image_reference, image_search, transform_search_point, SearchTransform
+    image_reference,
+    image_search,
+    transform_search_point,
 )
 
 logging.basicConfig(

@@ -146,7 +146,7 @@ def phase_disambiguate(
         return None, 0.0
 
     ref_proc = cv2.normalize(reference, None, 0, 255, cv2.NORM_MINMAX).astype(np.float32)
-    search_proc = cv2.normalize(search, None, 0, 255, cv2.NORM_MINMAX).astype(np.float32)
+    cv2.normalize(search, None, 0, 255, cv2.NORM_MINMAX).astype(np.float32)
 
     best_candidate: Candidate | None = None
     best_conf = 0.0

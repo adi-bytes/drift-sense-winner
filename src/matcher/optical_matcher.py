@@ -1,13 +1,14 @@
 import logging
-import time
+
 import cv2
 import numpy as np
 
-from src.matcher.coarse_matcher import Candidate, _find_local_maxima
+from src.matcher.coarse_matcher import Candidate
 
 logger = logging.getLogger(__name__)
 
 from scipy.ndimage import gaussian_filter
+
 
 def homomorphic_filter(channel: np.ndarray, sigma: float = 60.0, boost: float = 1.0) -> np.ndarray:
     """
@@ -74,8 +75,8 @@ def color_aware_match(
     search_f = search_f / search_sum
     
     # 1. Resize reference to the search scale (10x reduction)
-    tw = max(int(round(ref_f.shape[1] / scale)), 1)
-    th = max(int(round(ref_f.shape[0] / scale)), 1)
+    tw = max(round(ref_f.shape[1] / scale), 1)
+    th = max(round(ref_f.shape[0] / scale), 1)
     
     ref_resized = cv2.resize(ref_f, (tw, th), interpolation=cv2.INTER_AREA)
     

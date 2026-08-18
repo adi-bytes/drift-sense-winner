@@ -1,12 +1,13 @@
-import os
-import csv
-import time
 import argparse
-import numpy as np
+import csv
+import os
+
 import cv2
+import numpy as np
 
 from final_data_generation.geometry import generate_zone_canvas
 from final_data_generation.optical_physics import simulate_rgb_wafer_image
+
 
 def parse_args():
     p = argparse.ArgumentParser()

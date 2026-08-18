@@ -30,7 +30,7 @@ import time
 import cv2
 import numpy as np
 
-from src.matcher.coarse_matcher import Candidate, coarse_match, CENTER_SELECTION_SCALES
+from src.matcher.coarse_matcher import CENTER_SELECTION_SCALES, coarse_match
 from src.matcher.refine import refine_location
 from src.matcher.strip_anchor import strip_anchor_match
 

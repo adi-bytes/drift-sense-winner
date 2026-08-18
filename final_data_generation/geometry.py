@@ -25,7 +25,9 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d
 
 from final_data_generation.presets import (
-    get_preset, presets_for_kind, MATERIAL_SE_GAINS
+    MATERIAL_SE_GAINS,
+    get_preset,
+    presets_for_kind,
 )
 
 # ---------------------------------------------------------------------------
@@ -157,8 +159,8 @@ def _line_mask_with_ler(
     for i, center in enumerate(positions):
         half_w = widths[i] / 2.0
         # Apply LER: left edge shifts inward/outward, right edge independently
-        lo = int(round(center - half_w + ler_left[i]))
-        hi = int(round(center + half_w + ler_right[i]))
+        lo = round(center - half_w + ler_left[i])
+        hi = round(center + half_w + ler_right[i])
         mask[max(lo, 0): min(hi, size_px)] = True
 
         if i + 1 < len(positions):
@@ -166,8 +168,8 @@ def _line_mask_with_ler(
             next_half_w = widths[i + 1] / 2.0
             gap_nm = (next_center - next_half_w) - (center + half_w)
             if maybe_collapse_gap(gap_nm, collapse_threshold_nm, rng):
-                bridge_lo = int(round(center + half_w))
-                bridge_hi = int(round(next_center - next_half_w))
+                bridge_lo = round(center + half_w)
+                bridge_hi = round(next_center - next_half_w)
                 mask[max(bridge_lo, 0): min(bridge_hi, size_px)] = True
     return mask
 
@@ -212,8 +214,8 @@ def generate_dram_canvas(
     for i, wl in enumerate(word_positions):
         for j, bl in enumerate(bit_positions):
             if (i + j) % 2 == 0:
-                radius = max(1, int(round(base_radius * (1.0 + rng.normal(0, WIDTH_JITTER_FRACTION)))))
-                cv2.circle(canvas, (int(round(bl)), int(round(wl))), radius, ct_val, -1)
+                radius = max(1, round(base_radius * (1.0 + rng.normal(0, WIDTH_JITTER_FRACTION))))
+                cv2.circle(canvas, (round(bl), round(wl)), radius, ct_val, -1)
 
     # Sidewall gradient on word lines
     canvas = apply_sidewall_gradient(
@@ -223,7 +225,7 @@ def generate_dram_canvas(
     )
 
     if corner_rounding_px >= 0.5:
-        k = max(1, int(round(corner_rounding_px)))
+        k = max(1, round(corner_rounding_px))
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * k + 1, 2 * k + 1))
         canvas = cv2.morphologyEx(canvas, cv2.MORPH_OPEN, kernel)
         canvas = cv2.morphologyEx(canvas, cv2.MORPH_CLOSE, kernel)
@@ -274,12 +276,12 @@ def generate_finfet_canvas(
     canvas[:, col_mask] = np.maximum(canvas[:, col_mask], fin_val)
     canvas[row_mask, :] = np.maximum(canvas[row_mask, :], gate_val)
 
-    half = max(1, int(round(max(preset["contact_size_nm"] + linewidth_bias_nm, 1.0) / 2.0)))
+    half = max(1, round(max(preset["contact_size_nm"] + linewidth_bias_nm, 1.0) / 2.0))
     for i, fin_x in enumerate(fin_positions):
         for j in range(len(gate_positions) - 1):
             if (i + j) % 2 == 0:
                 mid_y = (gate_positions[j] + gate_positions[j + 1]) / 2.0
-                x, y = int(round(fin_x)), int(round(mid_y))
+                x, y = round(fin_x), round(mid_y)
                 p0 = (max(x - half, 0), max(y - half, 0))
                 p1 = (min(x + half, size_px - 1), min(y + half, size_px - 1))
                 cv2.rectangle(canvas, p0, p1, ct_val, -1)
@@ -291,7 +293,7 @@ def generate_finfet_canvas(
     )
 
     if corner_rounding_px >= 0.5:
-        k = max(1, int(round(corner_rounding_px)))
+        k = max(1, round(corner_rounding_px))
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * k + 1, 2 * k + 1))
         canvas = cv2.morphologyEx(canvas, cv2.MORPH_OPEN, kernel)
         canvas = cv2.morphologyEx(canvas, cv2.MORPH_CLOSE, kernel)
@@ -320,8 +322,8 @@ def _strip_routing_texture(size_px: int, rng: np.random.Generator) -> np.ndarray
         (np.arange(rng.uniform(0, STRIP_LINE_PITCH_NM), size_px, STRIP_LINE_PITCH_NM), False),
     ):
         for center in axis_positions:
-            lo = max(int(round(center - half)), 0)
-            hi = min(int(round(center + half)), size_px)
+            lo = max(round(center - half), 0)
+            hi = min(round(center + half), size_px)
             if is_row:
                 canvas[lo:hi, :] = STRIP_LINE_VAL
             else:
@@ -336,7 +338,7 @@ def _zone_grid(size_px: int, mat_size_nm: float, strip_width_nm: float) -> list:
     while pos < size_px:
         span_len = mat_size_nm if is_mat else strip_width_nm
         end = min(pos + span_len, size_px)
-        spans.append((is_mat, int(round(pos)), int(round(end))))
+        spans.append((is_mat, round(pos), round(end)))
         pos = end
         is_mat = not is_mat
     return spans

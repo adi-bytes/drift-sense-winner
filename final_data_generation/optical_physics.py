@@ -1,6 +1,7 @@
-import numpy as np
-from scipy.ndimage import gaussian_filter, fourier_gaussian
 import cv2
+import numpy as np
+from scipy.ndimage import fourier_gaussian
+
 
 # ---------------------------------------------------------------------------
 # 1. Thin-Film Interference (Color Shifting)
@@ -33,10 +34,12 @@ def thin_film_reflectance(thickness_map, wavelengths_nm, n_film, n_sub_complex):
 # 2. Chromatic Aberration & Defocus
 # ---------------------------------------------------------------------------
 def chromatic_psf_blur(image_rgb, na=0.9, wavelengths_nm=None, defocus_nm=0.0,
-                        pixel_size_nm=10.0, chromatic_shift_nm=[0,0,0]):
+                        pixel_size_nm=10.0, chromatic_shift_nm=None):
     """
     Simulates optical diffraction limit and axial chromatic aberration.
     """
+    if chromatic_shift_nm is None:
+        chromatic_shift_nm = [0, 0, 0]
     if wavelengths_nm is None:
         wavelengths_nm = [650, 550, 450]
     if chromatic_shift_nm is None:
@@ -194,7 +197,7 @@ def simulate_rgb_wafer_image(height_map_nm, thickness_map_nm,
     # rgb_dn is RGB order. Convert to BGR for standard cv2 saving.
     return cv2.cvtColor(rgb_dn, cv2.COLOR_RGB2BGR)
 
-def optical_image_reference(canvas: np.ndarray, seed: int = None) -> np.ndarray:
+def optical_image_reference(canvas: np.ndarray, seed: int | None = None) -> np.ndarray:
     """Wraps simulation for the clean reference image (1nm px)"""
     rng = np.random.default_rng(seed)
     
@@ -212,7 +215,7 @@ def optical_image_reference(canvas: np.ndarray, seed: int = None) -> np.ndarray:
         seed=seed
     )
 
-def optical_image_search(canvas: np.ndarray, seed: int = None, defocus_nm: float = 30.0, flux: float = 10000) -> np.ndarray:
+def optical_image_search(canvas: np.ndarray, seed: int | None = None, defocus_nm: float = 30.0, flux: float = 10000) -> np.ndarray:
     """Wraps simulation for the noisy/defocused search image (10nm px)"""
     rng = np.random.default_rng(seed)
     
