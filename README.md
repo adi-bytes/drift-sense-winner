@@ -1,13 +1,3 @@
----
-title: Drift-Sense
-emoji: 🔬
-colorFrom: blue
-colorTo: indigo
-sdk: streamlit
-app_file: ui.py
-pinned: false
----
-
 # Drift-Sense: Wafer Navigation-Error Recovery
 
 **SEMICON India Hackathon 2026 — Track 2 (Applied Materials Challenge)**
@@ -18,15 +8,28 @@ We solve this for **both** Grayscale SEM (electron microscopes) and RGB Optical 
 
 ---
 
-## 🚀 Quick Start (How to Run)
+## 🚀 Quick Start (One-Click Runner)
 
-**1. Setup your environment**
-Ensure you have Python installed. Then, run the following in your terminal:
+We've provided automated execution scripts so judges can run the entire solution locally with zero hassle. It will automatically create a secure python environment and install all dependencies.
+
+**For Windows:**
+Double-click `run_windows.bat` in your file explorer.
+
+**For Mac / Linux:**
+Open your terminal in this directory and run:
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
+bash run_mac_linux.sh
 ```
+
+---
+
+### Manual Docker Setup (Optional)
+If you prefer containerized environments, we have also provided a `Dockerfile`:
+```bash
+docker build -t drift-sense .
+docker run -p 8501:8501 drift-sense
+```
+
 
 **2. Generate the Datasets (Optional)**
 We have already included 30-sample curated test sets for both SEM and Optical in the `final_submission_dataset/` and `final_submission_dataset_opt/` folders. If you want to generate new ones yourself:
