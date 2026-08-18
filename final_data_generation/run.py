@@ -440,7 +440,7 @@ def main() -> None:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
 
-        arch_list = ["dram"] * args.num_dram + ["finfet"] * args.num_finfet
+        arch_list = ["dram_1x"] * args.num_dram + ["finfet_10nm"] * args.num_finfet
         
         for i, architecture in enumerate(arch_list):
             sample_seed = int(rng.integers(0, 2_000_000_000))

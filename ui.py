@@ -149,10 +149,11 @@ with tab2:
         if not os.path.exists(manifest_path):
             st.error(f"Manifest file not found at {manifest_path}. Please generate the dataset first.")
         else:
+            tol_px = "15" if "RGB" in track_mode else "5"
             cmd = [
                 "python3", "evaluate.py",
                 "--manifest", manifest_path,
-                "--tolerance-px", "5",
+                "--tolerance-px", tol_px,
                 "--output-dir", results_dir
             ]
             if "RGB" in track_mode:
@@ -181,28 +182,27 @@ with tab3:
         predictions_path = os.path.join(results_dir, "predictions.csv")
         df = pd.read_csv(predictions_path)
         
-        acc_1px = (df["error"] <= 1.0).mean() * 100
-        acc_2px = (df["error"] <= 2.0).mean() * 100
-        acc_3px = (df["error"] <= 3.0).mean() * 100
-        acc_4px = (df["error"] <= 4.0).mean() * 100
-        acc_5px = (df["error"] <= 5.0).mean() * 100
+        thresholds = [1, 2, 3, 4, 5, 6, 9, 12, 15] if "RGB" in track_mode else [1, 2, 3, 4, 5]
+        
+        accs = [(df["error"] <= t).mean() * 100 for t in thresholds]
         mean_err = df["error"].mean()
         median_err = df["error"].median()
         mean_time = df["time"].mean() * 1000  # ms
         
         st.subheader("Performance Metrics")
         
-        st.markdown("**Accuracies (1px - 5px Tolerance)**")
-        a1, a2, a3, a4, a5 = st.columns(5)
-        a1.metric("1px", f"{acc_1px:.1f}%")
-        a2.metric("2px", f"{acc_2px:.1f}%")
-        a3.metric("3px", f"{acc_3px:.1f}%")
-        a4.metric("4px", f"{acc_4px:.1f}%")
-        a5.metric("5px", f"{acc_5px:.1f}%")
+        st.markdown(f"**Accuracies ({thresholds[0]}px - {thresholds[-1]}px Tolerance)**")
+        
+        # Display metrics in chunks of 5 columns
+        for i in range(0, len(thresholds), 5):
+            cols = st.columns(5)
+            chunk = thresholds[i:i+5]
+            for j, t in enumerate(chunk):
+                cols[j].metric(f"{t}px", f"{accs[i+j]:.1f}%")
 
         with st.expander("View Confusion Matrix (Matches vs Mismatches)"):
             cm_data = []
-            for tol in [1, 2, 3, 4, 5]:
+            for tol in thresholds:
                 matches = (df["error"] <= tol).sum()
                 mismatches = len(df) - matches
                 acc = (matches / len(df)) * 100
