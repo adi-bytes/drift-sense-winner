@@ -24,7 +24,7 @@ num_samples = 1 if batch_mode == "Single Image" else st.sidebar.number_input("Nu
 severity = None
 advanced_args = []
 
-if config_mode == "Severity Curriculum (Easy)":
+if config_mode == "Severity Curriculum ":
     severity = st.sidebar.slider("Severity Level (0-6)", min_value=0, max_value=6, value=2, 
                                 help="0=Ideal, 6=Extreme Drift & Noise")
 else:
@@ -67,7 +67,7 @@ with tab1:
         generate_clicked = st.button("Generate Dataset", width="stretch", type="primary")
         
     if generate_clicked:
-        if config_mode == "Severity Curriculum (Easy)":
+        if config_mode == "Severity Curriculum ":
             st.info(f"Generating {num_samples} samples at Severity {severity}...")
         else:
             st.info(f"Generating {num_samples} custom physics samples...")
@@ -80,7 +80,7 @@ with tab1:
         ]
         
         if "SEM" in track_mode:
-            if config_mode == "Severity Curriculum (Easy)":
+            if config_mode == "Severity Curriculum ":
                 cmd.extend(["--severity-level", str(severity)])
             else:
                 cmd.extend(advanced_args)
