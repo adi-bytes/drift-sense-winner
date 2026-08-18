@@ -132,75 +132,58 @@ def _find_signature_in_search(sig_ref: np.ndarray, search_profile: np.ndarray) -
     return best_pos, max(confidence, 0.0)
 
 
-def strip_anchor_match(
-    reference: np.ndarray,
-    search: np.ndarray,
-    scale_factor: int = 10,
-) -> StripAnchorResult | None:
+def strip_anchor_match(reference: np.ndarray, search: np.ndarray, zncc_candidate=None) -> StripAnchorResult | None:
     """
-    Attempt to localize the reference center using strip/boundary anchoring.
-    Returns StripAnchorResult or None if no usable boundary detected.
+    Identifies deterministic boundary structures (strips) in periodic logic/DRAM arrays.
+    Resolves aliasing by replacing the ambiguous ZNCC coordinate with the exact strip coordinate.
     """
-    best_result: StripAnchorResult | None = None
-    best_conf = 0.0
+    scale_factor = 10.0
+    
+    pred_x = zncc_candidate.x if zncc_candidate else search.shape[1] / 2.0
+    pred_y = zncc_candidate.y if zncc_candidate else search.shape[0] / 2.0
+    
+    total_conf = 1.0
+    detected = False
 
-    for direction in ("horizontal", "vertical"):
+    for direction in ["horizontal", "vertical"]:
         axis = 1 if direction == "horizontal" else 0
-        ref_var_profile = _compute_variance_profile(reference, axis=axis)
+        ref_var_profile = _compute_variance_profile(reference, axis)
+        
         strip_pos_ref, strip_conf_ref = _detect_strip_position(ref_var_profile)
-        if strip_pos_ref is None or strip_conf_ref < STRIP_DETECTION_THRESHOLD:
+        if strip_pos_ref is None:
             continue
-
+            
         logger.info("Strip boundary detected: %s at ref_px=%d (conf=%.2f)", direction, strip_pos_ref, strip_conf_ref)
 
-        sig_ref = _extract_signature(reference, strip_pos_ref, direction)
-        sig_ref_ds = cv2.resize(
-            sig_ref.reshape(1, -1).astype(np.float32),
-            (len(sig_ref) // scale_factor, 1),
-            interpolation=cv2.INTER_AREA,
-        ).ravel()
-
-        if direction == "horizontal":
-            search_profile_full = np.mean(search.astype(np.float32), axis=1)
-        else:
-            search_profile_full = np.mean(search.astype(np.float32), axis=0)
-
-        strip_pos_search, xcorr_conf = _find_signature_in_search(sig_ref_ds, search_profile_full)
-
-        # Require strong xcorr confidence independently — the strip detection alone is not enough
-        if xcorr_conf < MIN_XCORR_CONFIDENCE:
-            logger.debug(
-                "%s anchor cross-correlation too low: %.3f (min=%.2f)", direction, xcorr_conf, MIN_XCORR_CONFIDENCE
-            )
+        search_var_profile = _compute_variance_profile(search, axis)
+        strip_pos_search, strip_conf_search = _detect_strip_position(search_var_profile)
+        
+        if strip_pos_search is None:
             continue
 
-        # Back-compute reference center in search coordinates
         if direction == "horizontal":
-            strip_offset_ref_px = strip_pos_ref - (reference.shape[0] / 2.0)
-            strip_offset_search_px = strip_offset_ref_px / scale_factor
-            pred_y = strip_pos_search - strip_offset_search_px
-            pred_x = search.shape[1] / 2.0
+            # Horizontal strip means the strip spans X, so its variance position is Y.
+            strip_offset_ref_y = strip_pos_ref - (reference.shape[0] / 2.0)
+            pred_y = strip_pos_search - (strip_offset_ref_y / scale_factor)
         else:
-            strip_offset_ref_px = strip_pos_ref - (reference.shape[1] / 2.0)
-            strip_offset_search_px = strip_offset_ref_px / scale_factor
-            pred_x = strip_pos_search - strip_offset_search_px
-            pred_y = search.shape[0] / 2.0
+            # Vertical strip means the strip spans Y, so its variance position is X.
+            strip_offset_ref_x = strip_pos_ref - (reference.shape[1] / 2.0)
+            pred_x = strip_pos_search - (strip_offset_ref_x / scale_factor)
 
-        conf = float(strip_conf_ref) * float(xcorr_conf)
-        logger.info("Strip anchor (%s): pred=(%.1f, %.1f), conf=%.3f", direction, pred_x, pred_y, conf)
+        conf = float(strip_conf_ref) * float(strip_conf_search)
+        total_conf *= conf
+        detected = True
 
-        if conf > best_conf:
-            best_conf = conf
-            best_result = StripAnchorResult(
-                x=float(pred_x),
-                y=float(pred_y),
-                confidence=conf,
-                direction=direction,
-                strip_pos_ref=strip_pos_ref,
-                strip_pos_search=strip_pos_search,
-            )
-
-    if best_result is None or best_conf < MIN_ANCHOR_CONFIDENCE * STRIP_DETECTION_THRESHOLD:
+    if not detected or total_conf < STRIP_DETECTION_THRESHOLD * STRIP_DETECTION_THRESHOLD:
         return None
 
-    return best_result
+    logger.info("Merged Strip anchor: pred=(%.1f, %.1f), conf=%.3f", pred_x, pred_y, total_conf)
+    
+    return StripAnchorResult(
+        x=float(pred_x),
+        y=float(pred_y),
+        confidence=total_conf,
+        direction="merged",
+        strip_pos_ref=0,
+        strip_pos_search=0,
+    )

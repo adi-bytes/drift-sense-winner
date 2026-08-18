@@ -16,16 +16,22 @@ st.sidebar.header("Configuration")
 track_mode = st.sidebar.radio("Target Modality", ["Grayscale (SEM)", "RGB (Optical)"])
 
 # Customization Mode
-config_mode = st.sidebar.radio("Customization Mode", ["Severity Curriculum ", "Advanced Customization (Full Physics)"])
+config_mode = st.sidebar.radio("Customization Mode", ["Severity Curriculum (Levels)", "Advanced Customization (Full Physics)"])
 
 # Batch or Single
 batch_mode = st.sidebar.radio("Generation Mode", ["Single Image", "Batch Mode"])
-num_samples = 1 if batch_mode == "Single Image" else st.sidebar.number_input("Number of Samples", min_value=1, max_value=500, value=10)
+
+if batch_mode == "Single Image":
+    num_dram = 1
+    num_finfet = 0
+else:
+    num_dram = st.sidebar.number_input("Number of DRAM Samples", min_value=0, max_value=250, value=5)
+    num_finfet = st.sidebar.number_input("Number of FinFET Samples", min_value=0, max_value=250, value=5)
 
 severity = None
 advanced_args = []
 
-if config_mode == "Severity Curriculum ":
+if config_mode == "Severity Curriculum (Easy)":
     severity = st.sidebar.slider("Severity Level (0-6)", min_value=0, max_value=6, value=2, 
                                 help="0=Ideal, 6=Extreme Drift & Noise")
 else:
@@ -68,20 +74,22 @@ with tab1:
         generate_clicked = st.button("Generate Dataset", width="stretch", type="primary")
         
     if generate_clicked:
-        if config_mode == "Severity Curriculum ":
-            st.info(f"Generating {num_samples} samples at Severity {severity}...")
+        total_samples = num_dram + num_finfet
+        if config_mode == "Severity Curriculum (Levels)":
+            st.info(f"Generating {total_samples} samples at Severity {severity}...")
         else:
-            st.info(f"Generating {num_samples} custom physics samples...")
+            st.info(f"Generating {total_samples} custom physics samples...")
             
         script = "final_data_generation.run_optical" if "RGB" in track_mode else "final_data_generation.run"
         cmd = [
             "python3", "-m", script,
-            "--num-samples", str(num_samples),
+            "--num-dram", str(num_dram),
+            "--num-finfet", str(num_finfet),
             "--output-dir", output_dir
         ]
         
         if "SEM" in track_mode:
-            if config_mode == "Severity Curriculum ":
+            if config_mode == "Severity Curriculum (Levels)":
                 cmd.extend(["--severity-level", str(severity)])
             else:
                 cmd.extend(advanced_args)
@@ -91,7 +99,7 @@ with tab1:
         with st.spinner("Running final_data_generation engine..."):
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode == 0:
-                st.success(f"Successfully generated {num_samples} samples!")
+                st.success(f"Successfully generated {total_samples} samples!")
                 with st.expander("View Generation Logs", expanded=False):
                     st.code(result.stdout + "\n" + result.stderr)
             else:
@@ -130,7 +138,7 @@ with tab1:
 # --- TAB 2: RUN INFERENCE ---
 with tab2:
     st.subheader("Localization & Evaluation Engine")
-    st.write("Run the routing engine (ZNCC + U-Net) and calculate sub-pixel accuracy.")
+    st.write("Run the Adaptive Cascade routing engine (ZNCC + Strip Anchors) and calculate sub-pixel accuracy.")
     
     col_run, col_run_msg = st.columns([1, 2])
     with col_run:

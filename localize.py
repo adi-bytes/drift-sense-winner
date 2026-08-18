@@ -134,41 +134,42 @@ def localize(
         max_score = candidates[0].score if candidates else 0.0
         logger.info("Coarse match: %.3fs (top score=%.3f, count=%d)", t_coarse, max_score, len(candidates))
 
-    # --- Strategy 1: Strip Anchor (ONLY when ZNCC is ambiguous AND NOT OPTICAL) ---
-    # Strip anchor is expensive in terms of false positives when ZNCC is already confident.
-    # Only run it when ZNCC has multiple high-scoring candidates (aliasing risk).
+    # --- Strategy 1: Strip Anchor (Ambiguity Resolution) ---
     initial_max = candidates[0].score if candidates else 0.0
     aliasing_ratio = (candidates[1].score / initial_max) if len(candidates) > 1 and initial_max > 0 else 0.0
     
-    if not optical:
-        zncc_is_unambiguous = initial_max > 0.45 and aliasing_ratio < 0.88
-        strip_result = None  # Default: no strip anchor result
+    zncc_is_unambiguous = initial_max > 0.45 and aliasing_ratio < 0.88
+    strip_result = None  # Default: no strip anchor result
+    
+    if not optical and not zncc_is_unambiguous and initial_max >= 0.35:
+        # ZNCC is ambiguous — try strip anchor to resolve it
+        t0 = time.perf_counter()
         
-        if not zncc_is_unambiguous and initial_max >= 0.35:
-            # ZNCC is ambiguous — try strip anchor to resolve it
-            t0 = time.perf_counter()
-            strip_result = strip_anchor_match(reference, search)
-            t_strip = time.perf_counter() - t0
-            if strip_result is not None:
-                logger.info(
-                    "Strip anchor fired (conf=%.3f, dir=%s) → (%.1f, %.1f) [%.3fs]",
-                    strip_result.confidence, strip_result.direction,
-                    strip_result.x, strip_result.y, t_strip
-                )
-        
-        # Adaptive Cascade Router: heavy fallback when ZNCC finds nothing
-        if initial_max < 0.35:
-            logger.warning(
-                "WARNING_SEVERE_NOISE_OR_OOD: Triggering Heavy Fallback Pipeline (score=%.3f)",
-                initial_max
+        s_ref_proc = reference
+        s_search_proc = search
+            
+        strip_result = strip_anchor_match(s_ref_proc, s_search_proc, candidates[0])
+        t_strip = time.perf_counter() - t0
+        if strip_result is not None:
+            logger.info(
+                "Strip anchor fired (conf=%.3f, dir=%s) → (%.1f, %.1f) [%.3fs]",
+                strip_result.confidence, strip_result.direction,
+                strip_result.x, strip_result.y, t_strip
             )
-            t_fb = time.perf_counter()
-            try:
-                from src.matcher.fallback import heavy_match
-                candidates, ref_proc, search_proc = heavy_match(reference, search)
-                logger.info("Fallback execution time: %.3fs", time.perf_counter() - t_fb)
-            except ImportError:
-                logger.warning("Fallback module not found, continuing with ZNCC results.")
+    
+    # Adaptive Cascade Router: heavy fallback when ZNCC finds nothing (SEM only)
+    if not optical and initial_max < 0.35:
+        logger.warning(
+            "WARNING_SEVERE_NOISE_OR_OOD: Triggering Heavy Fallback Pipeline (score=%.3f)",
+            initial_max
+        )
+        t_fb = time.perf_counter()
+        try:
+            from src.matcher.fallback import heavy_match
+            candidates, ref_proc, search_proc = heavy_match(reference, search)
+            logger.info("Fallback execution time: %.3fs", time.perf_counter() - t_fb)
+        except ImportError:
+            logger.warning("Fallback module not found, continuing with ZNCC results.")
 
     # --- Disambiguation & Refinement ---
     t0 = time.perf_counter()
@@ -181,15 +182,12 @@ def localize(
     t_disambig = 0.0
     
     if optical:
-        # For optical images, the LAB Chrominance SSD already guarantees the global minimum.
-        # Structural sub-pixel refinement (Lukas-Kanade) fails because the optical patch 
-        # is diffraction-limited and lacks structural variance, causing it to drift.
         best_cand = candidates[0] if candidates else None
         if best_cand:
             refined_x, refined_y = best_cand.x, best_cand.y
             confidence = float(best_cand.score)
         else:
-            h, w = search_proc.shape
+            h, w = search.shape[:2]
             refined_x, refined_y = w / 2.0, h / 2.0
             confidence = 0.0
         selected_method = "optical_ssd"
@@ -198,6 +196,7 @@ def localize(
             h, w = search_proc.shape
             refined_x, refined_y = w / 2.0, h / 2.0
             confidence = 0.0
+            selected_method = "center_proximity"
         elif strip_result is not None and strip_result.confidence >= 0.15:
             # Strategy 1 wins: strip anchor gives us an unambiguous location
             # Guard: only trust strip anchor when combined confidence is meaningful
@@ -245,18 +244,18 @@ def localize(
                 refined_x, refined_y = final_choice[0], final_choice[1]
                 confidence = float(final_choice[2])
                 selected_method = "center_proximity"
-        
-        # Diagnostic Engine Extraction
-        max_score = candidates[0].score if candidates else 0.0
-        aliasing_ratio = (candidates[1].score / max_score) if len(candidates) > 1 and max_score > 0 else 0.0
-        
-        # Determine Preemptive Confidence Label
-        if max_score < 0.35:
-            confidence_label = "WARNING_SEVERE_NOISE_OR_OOD"
-        elif aliasing_ratio > 0.95:
-            confidence_label = "WARNING_ALIASING_RISK"
-        else:
-            confidence_label = "HIGH_CONFIDENCE"
+    
+    # Diagnostic Engine Extraction
+    max_score = candidates[0].score if candidates else 0.0
+    aliasing_ratio = (candidates[1].score / max_score) if len(candidates) > 1 and max_score > 0 else 0.0
+    
+    # Determine Preemptive Confidence Label
+    if max_score < 0.35:
+        confidence_label = "WARNING_SEVERE_NOISE_OR_OOD"
+    elif aliasing_ratio > 0.95:
+        confidence_label = "WARNING_ALIASING_RISK"
+    else:
+        confidence_label = "HIGH_CONFIDENCE"
         
     t_refine = time.perf_counter() - t0
     logger.info("Refinement & Disambiguation: %.3fs", t_refine)

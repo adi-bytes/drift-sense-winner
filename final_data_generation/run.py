@@ -366,8 +366,8 @@ def parse_args() -> argparse.Namespace:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("--num-samples", type=int, default=30)
-    p.add_argument("--architectures", nargs="+", default=list(PRESETS.keys()), choices=list(PRESETS.keys()))
+    p.add_argument("--num-dram", type=int, default=15)
+    p.add_argument("--num-finfet", type=int, default=15)
     p.add_argument("--split", default="test")
     p.add_argument("--output-dir", default="./data_final")
     p.add_argument("--seed", type=int, default=42)
@@ -440,10 +440,11 @@ def main() -> None:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
 
-        for i in range(args.num_samples):
+        arch_list = ["dram"] * args.num_dram + ["finfet"] * args.num_finfet
+        
+        for i, architecture in enumerate(arch_list):
             sample_seed = int(rng.integers(0, 2_000_000_000))
             sample_rng = np.random.default_rng(sample_seed)
-            architecture = args.architectures[int(rng.integers(0, len(args.architectures)))]
 
             rotation_deg = 0.0
             if args.rotation_max_deg > 0:
@@ -482,8 +483,8 @@ def main() -> None:
 
             sample = generate_sample(architecture, sample_rng, params, rotation_deg)
 
-            ref_fname = f"{i:05d}.png"
-            search_fname = f"{i:05d}.png"
+            ref_fname = f"{i:05d}_{architecture}.png"
+            search_fname = f"{i:05d}_{architecture}.png"
             cv2.imwrite(os.path.join(ref_dir, ref_fname), sample["reference_img"])
             cv2.imwrite(os.path.join(search_dir, search_fname), sample["search_img"])
 
@@ -520,10 +521,10 @@ def main() -> None:
                 "boundary_bias": params.boundary_bias,
                 "rotation_deg": rotation_deg,
             })
-            logger.info("[%d/%d] %s → gt=(%.1f, %.1f)", i + 1, args.num_samples, architecture, sample["gt_x"], sample["gt_y"])
+            logger.info("[%d/%d] %s → gt=(%.1f, %.1f)", i + 1, len(arch_list), architecture, sample["gt_x"], sample["gt_y"])
 
     elapsed = time.perf_counter() - t_start
-    logger.info("Wrote %d samples to %s (%.1fs total, %.2fs/sample)", args.num_samples, split_dir, elapsed, elapsed / max(args.num_samples, 1))
+    logger.info("Wrote %d samples to %s (%.1fs total, %.2fs/sample)", len(arch_list), split_dir, elapsed, elapsed / max(len(arch_list), 1))
 
 
 if __name__ == "__main__":

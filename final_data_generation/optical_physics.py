@@ -165,7 +165,8 @@ def apply_illumination(image_rgb, illum_map):
 # ---------------------------------------------------------------------------
 def simulate_rgb_wafer_image(height_map_nm, thickness_map_nm,
                               pixel_size_nm=10.0, defocus_nm=0.0,
-                              na=0.9, photon_flux=20000, mode='brightfield', seed=None):
+                              na=0.9, photon_flux=20000, mode='brightfield', seed=None,
+                              downsample_factor=1):
     """
     Full optical simulation pipeline.
     height_map_nm: (H, W) array representing physical topography.
@@ -176,13 +177,20 @@ def simulate_rgb_wafer_image(height_map_nm, thickness_map_nm,
     n_si = [3.85+0.02j, 4.05+0.03j, 4.36+0.08j]
 
     # Combine topography and film thickness variations
-    # Add 600nm of base oxide so the phase wraps multiple times, creating vivid interference colors!
     effective_thickness = height_map_nm + thickness_map_nm + 600.0
 
-    # Step 1: Thin-film color
+    # Step 1: Thin-film color (Must be done at high resolution because it is non-linear!)
     rgb = thin_film_reflectance(effective_thickness, wls, n_sio2, n_si)
 
-    # Step 2: Chromatic blur + defocus
+    # PERFORMANCE OPTIMIZATION: Downsample the linear photon intensity before spatial blur
+    if downsample_factor > 1:
+        h, w = rgb.shape[:2]
+        new_size = (w // downsample_factor, h // downsample_factor)
+        rgb = cv2.resize(rgb, new_size, interpolation=cv2.INTER_AREA)
+        thickness_map_nm = cv2.resize(thickness_map_nm, new_size, interpolation=cv2.INTER_AREA)
+        pixel_size_nm = pixel_size_nm * downsample_factor
+
+    # Step 2: Chromatic blur + defocus (Done at downsampled resolution for O(N log N) speedup)
     rgb = chromatic_psf_blur(rgb, na=na, wavelengths_nm=wls,
                               defocus_nm=defocus_nm, pixel_size_nm=pixel_size_nm)
 
@@ -219,19 +227,14 @@ def optical_image_search(canvas: np.ndarray, seed: int | None = None, defocus_nm
     """Wraps simulation for the noisy/defocused search image (10nm px)"""
     rng = np.random.default_rng(seed)
     
-    # PERFORMANCE OPTIMIZATION:
-    # Instead of doing 10000x10000 FFTs and then resizing at the end, 
-    # we physically downsample the topography first, reducing calculations by 100x.
-    h, w = canvas.shape
-    canvas_10nm = cv2.resize(canvas, (w // 10, h // 10), interpolation=cv2.INTER_AREA)
-
     # Thicker variation for wider FOV
-    thickness_map = rng.normal(loc=20.0, scale=1.5, size=canvas_10nm.shape)
+    thickness_map = rng.normal(loc=20.0, scale=1.5, size=canvas.shape)
     
     rgb_dn = simulate_rgb_wafer_image(
-        height_map_nm=canvas_10nm,
+        height_map_nm=canvas,
         thickness_map_nm=thickness_map,
-        pixel_size_nm=10.0,  # Simulate natively at 10nm resolution
+        pixel_size_nm=1.0,  # Simulate physically at 1nm
+        downsample_factor=10, # Mathematically correct downsample after thin-film physics
         defocus_nm=defocus_nm, # Out of focus during fast scanning
         na=0.9,
         photon_flux=flux, # Lower dose for search scan

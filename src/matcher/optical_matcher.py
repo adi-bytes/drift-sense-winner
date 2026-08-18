@@ -3,7 +3,7 @@ import logging
 import cv2
 import numpy as np
 
-from src.matcher.coarse_matcher import Candidate
+from src.matcher.coarse_matcher import Candidate, _find_local_maxima
 
 logger = logging.getLogger(__name__)
 
@@ -89,34 +89,29 @@ def color_aware_match(
     # Combine scores equally
     combined_score = (score_b + score_g + score_r) / 3.0
     
-    # 3. Find Peak and perform Sub-Pixel Refinement
-    _, max_val, _, max_loc = cv2.minMaxLoc(combined_score)
-    px, py = subpixel_peak(combined_score, max_loc)
+    # 3. Find peaks using local maxima (critical for aliasing detection)
+    raw_peaks = _find_local_maxima(combined_score, threshold=0.4, max_peaks=5)
     
-    # Convert OpenCV coordinate center offset
-    # A prediction of px=510 with tw=100 means the box is 510 to 610. 
-    # The geometric center of this box is 510 + 49.5 = 559.5.
-    # However, gt_cx_search maps to the mathematical integer coordinate center, 
-    # which introduces a systematic +0.5 offset because the index 500 represents the pixel block.
-    # To align the continuous bounding box center with the integer point coordinate, we add 0.5.
-    geom_x = px + (tw - 1) / 2.0
-    geom_y = py + (th - 1) / 2.0
+    candidates = []
+    for px, py, score in raw_peaks:
+        # Sub-pixel refinement
+        spx, spy = subpixel_peak(combined_score, (px, py))
+        
+        # Convert OpenCV coordinate center offset
+        geom_x = spx + (tw - 1) / 2.0
+        geom_y = spy + (th - 1) / 2.0
+        
+        candidates.append(Candidate(
+            x=geom_x,
+            y=geom_y,
+            score=float(score),
+            scale=scale,
+            template_w=tw,
+            template_h=th,
+            rotation=0.0
+        ))
+        
+    if candidates:
+        logger.info(f"Optical Matcher locked onto top peak ({candidates[0].x:.2f}, {candidates[0].y:.2f}) with ZNCC score: {candidates[0].score:.4f}")
     
-    # We do NOT add +0.5 here. The ZNCC subpixel quadratic peak inherently 
-    # compensates for the bounding box integer truncation. 
-    # Our analysis proves that the remaining ~4.7px shift is fundamentally driven 
-    # by Defocus-induced Phase Shift (40nm defocus asymmetry).
-    final_x = geom_x
-    final_y = geom_y
-    
-    logger.info(f"Optical Matcher locked onto ({final_x:.2f}, {final_y:.2f}) with ZNCC score: {max_val:.4f}")
-    
-    return [Candidate(
-        x=final_x,
-        y=final_y,
-        score=float(max_val),
-        scale=scale,
-        template_w=tw,
-        template_h=th,
-        rotation=0.0
-    )]
+    return candidates

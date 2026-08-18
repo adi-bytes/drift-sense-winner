@@ -11,7 +11,8 @@ from final_data_generation.optical_physics import simulate_rgb_wafer_image
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--num-samples", type=int, default=10)
+    p.add_argument("--num-dram", type=int, default=5)
+    p.add_argument("--num-finfet", type=int, default=5)
     p.add_argument("--output-dir", default="./optical_submission_dataset")
     p.add_argument("--seed", type=int, default=42)
     return p.parse_args()
@@ -33,13 +34,11 @@ def main():
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         
-        for i in range(args.num_samples):
+        arch_list = ["dram"] * args.num_dram + ["finfet"] * args.num_finfet
+        
+        for i, arch in enumerate(arch_list):
             sample_seed = int(rng.integers(0, 1_000_000))
             srng = np.random.default_rng(sample_seed)
-            
-            # Select random architecture
-            archs = ["dram", "finfet"]
-            arch = archs[srng.integers(0, len(archs))]
             
             # 1. Generate 16000x16000 (1nm/px) geometry (heightmap in nm)
             # Default height is 0 (silicon), trenches are 50nm
@@ -82,19 +81,18 @@ def main():
             sy0 = int(ref_cy - 5000 + stage_err_y)
             search_fine = fine_canvas[sy0:sy0+10000, sx0:sx0+10000]
             
-            # PERFORMANCE OPTIMIZATION: Downsample topography FIRST before physics simulation
-            search_fine_10nm = cv2.resize(search_fine, (1000, 1000), interpolation=cv2.INTER_AREA)
+            # PERFORMANCE OPTIMIZATION: Physics-aware downsampling
+            # We must pass the 1nm physical topography directly to the engine so the non-linear
+            # thin-film interference is calculated accurately BEFORE the photon intensities are downsampled!
             thickness_slice = thickness_map[sy0:sy0+10000, sx0:sx0+10000]
-            thickness_10nm = cv2.resize(thickness_slice, (1000, 1000), interpolation=cv2.INTER_AREA)
-            
-            search_img = simulate_rgb_wafer_image(search_fine_10nm, thickness_10nm, pixel_size_nm=10.0, defocus_nm=40.0, photon_flux=8000, seed=sample_seed)
+            search_img = simulate_rgb_wafer_image(search_fine, thickness_slice, pixel_size_nm=1.0, downsample_factor=10, defocus_nm=40.0, photon_flux=8000, seed=sample_seed)
             
             # Ground truth in search space
             gt_cx_search = (ref_cx - sx0) / 10.0
             gt_cy_search = (ref_cy - sy0) / 10.0
             
-            ref_path = f"{i:05d}.png"
-            search_path = f"{i:05d}.png"
+            ref_path = f"{i:05d}_{arch}.png"
+            search_path = f"{i:05d}_{arch}.png"
             cv2.imwrite(os.path.join(ref_dir, ref_path), ref_img)
             cv2.imwrite(os.path.join(search_dir, search_path), search_img)
             
@@ -107,7 +105,7 @@ def main():
                 "architecture": arch,
                 "sample_seed": sample_seed
             })
-            print(f"Generated {i+1}/{args.num_samples}: {arch}")
+            print(f"Generated {i+1}/{len(arch_list)}: {arch}")
 
 if __name__ == "__main__":
     main()
