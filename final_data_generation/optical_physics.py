@@ -105,7 +105,7 @@ def apply_sensor_noise(image_photons, qe=0.75, gain_e_per_dn=0.5,
 # ---------------------------------------------------------------------------
 # 4. Illumination Gradients
 # ---------------------------------------------------------------------------
-def illumination_gradient(shape, mode='brightfield', vignette_sigma=None, seed=None):
+def illumination_gradient(shape, pixel_size_nm=1.0, mode='brightfield', vignette_sigma=None, seed=None):
     """
     Simulates Köhler illumination falloff (vignetting) and lamp non-uniformity.
     """
@@ -117,8 +117,8 @@ def illumination_gradient(shape, mode='brightfield', vignette_sigma=None, seed=N
     r2 = xx**2 + yy**2
 
     if mode == 'brightfield':
-        # Always generate the noise profile for the full camera sensor (10000x10000 at 1nm/px)
-        sensor_size = 10000
+        # Always generate the noise profile for the full camera sensor (10000nm x 10000nm)
+        sensor_size = int(10000 / pixel_size_nm)
         
         # Vignette centered on the sensor
         y_sensor = np.linspace(-1, 1, sensor_size)
@@ -131,7 +131,8 @@ def illumination_gradient(shape, mode='brightfield', vignette_sigma=None, seed=N
         vignette_sensor = np.exp(-r2_s / (2 * vignette_sigma**2))
 
         # Low-frequency lamp non-uniformity: smooth random field on the sensor
-        noise_lowfreq = rng.normal(0, 0.03, size=(sensor_size // 16, sensor_size // 16))
+        noise_dim = max(1, sensor_size // 16)
+        noise_lowfreq = rng.normal(0, 0.03, size=(noise_dim, noise_dim))
         noise_upsampled = cv2.resize(noise_lowfreq, (sensor_size, sensor_size), interpolation=cv2.INTER_CUBIC)
 
         illum_sensor = vignette_sensor * (1.0 + noise_upsampled)
@@ -183,7 +184,7 @@ def simulate_rgb_wafer_image(height_map_nm, thickness_map_nm,
                               defocus_nm=defocus_nm, pixel_size_nm=pixel_size_nm)
 
     # Step 3: Illumination gradient
-    illum = illumination_gradient(thickness_map_nm.shape, mode=mode, seed=seed)
+    illum = illumination_gradient(thickness_map_nm.shape, pixel_size_nm=pixel_size_nm, mode=mode, seed=seed)
     rgb = apply_illumination(rgb, illum)
 
     # Step 4: Scale to photons and add sensor noise
@@ -215,13 +216,19 @@ def optical_image_search(canvas: np.ndarray, seed: int = None, defocus_nm: float
     """Wraps simulation for the noisy/defocused search image (10nm px)"""
     rng = np.random.default_rng(seed)
     
+    # PERFORMANCE OPTIMIZATION:
+    # Instead of doing 10000x10000 FFTs and then resizing at the end, 
+    # we physically downsample the topography first, reducing calculations by 100x.
+    h, w = canvas.shape
+    canvas_10nm = cv2.resize(canvas, (w // 10, h // 10), interpolation=cv2.INTER_AREA)
+
     # Thicker variation for wider FOV
-    thickness_map = rng.normal(loc=20.0, scale=1.5, size=canvas.shape)
+    thickness_map = rng.normal(loc=20.0, scale=1.5, size=canvas_10nm.shape)
     
     rgb_dn = simulate_rgb_wafer_image(
-        height_map_nm=canvas,
+        height_map_nm=canvas_10nm,
         thickness_map_nm=thickness_map,
-        pixel_size_nm=1.0,  # Simulate at 1nm resolution first
+        pixel_size_nm=10.0,  # Simulate natively at 10nm resolution
         defocus_nm=defocus_nm, # Out of focus during fast scanning
         na=0.9,
         photon_flux=flux, # Lower dose for search scan
@@ -229,6 +236,4 @@ def optical_image_search(canvas: np.ndarray, seed: int = None, defocus_nm: float
         seed=seed
     )
     
-    # Downsample by 10x to simulate the 10nm/px search sensor (from 10000x10000 to 1000x1000)
-    h, w = rgb_dn.shape[:2]
-    return cv2.resize(rgb_dn, (w // 10, h // 10), interpolation=cv2.INTER_AREA)
+    return rgb_dn
