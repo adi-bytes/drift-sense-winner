@@ -269,6 +269,22 @@ def _save_accuracy_chart(
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close()
 
+def _save_predictions_csv(results: list[dict], output_path: str) -> None:
+    """Export all predictions and ground truths to a CSV file."""
+    if not results:
+        return
+    
+    fieldnames = [
+        "id", "architecture", "error", "gt_x", "gt_y", "pred_x", "pred_y", 
+        "time", "confidence_label"
+    ]
+    
+    with open(output_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for r in results:
+            writer.writerow(r)
+
 
 def _save_error_histogram(errors: list[float], output_path: str) -> None:
     """Histogram of prediction errors."""
@@ -337,14 +353,9 @@ def _save_summary(
         f.write(f"  Mean:   {np.mean(confidences):8.3f}\n")
         f.write(f"  Min:    {np.min(confidences):8.3f}\n")
         f.write(f"  <0.6:   {int((confidences < 0.6).sum())}/{len(confidences)}\n")
-        periodic = np.asarray([bool(r.get("is_periodic", False)) for r in results])
         verification = np.asarray([r.get("verification_score", 0.0) for r in results])
         f.write("\nPERIODICITY BREAKDOWN\n")
         f.write("-" * 40 + "\n")
-        for label, mask in (("periodic", periodic), ("non-periodic", ~periodic)):
-            count = int(mask.sum())
-            accuracy = float((errors_arr[mask] <= tolerance).mean()) if count else 0.0
-            f.write(f"  {label:12s}: n={count:3d}, acc@{tolerance:g}px={accuracy * 100:5.1f}%\n")
         f.write(f"  Mean verification score: {np.mean(verification):.3f}\n")
 
         f.write("\nPREEMPTIVE DIAGNOSTIC ENGINE\n")
@@ -402,12 +413,21 @@ def main() -> None:
     p.add_argument(
         "--output-dir", default="./results", help="Directory for evaluation outputs"
     )
+    p.add_argument(
+        "--optical",
+        action="store_true",
+        help="Run evaluation using the isolated Optical RGB pipeline",
+    )
     args = p.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
 
     rows = _load_manifest(args.manifest)
     print(f"Evaluating {len(rows)} samples...")
+
+    if not rows:
+        print(f"Error: Manifest file {args.manifest} is empty. Please wait for the dataset generation to complete or generate a new dataset.", file=sys.stderr)
+        sys.exit(1)
 
     results: list[dict] = []
     manifest_dir = os.path.dirname(os.path.abspath(args.manifest))
@@ -429,27 +449,34 @@ def main() -> None:
                 raise FileNotFoundError(ref_path)
             if not os.path.isfile(search_path):
                 raise FileNotFoundError(search_path)
-            pred_x, pred_y, confidence, diagnostics = localize(
-                ref_path, search_path, verbose=False, return_diagnostics=True
+            # --- Run Localization ---
+            # We explicitly pass return_confidence and return_diagnostics for robust error tracking
+            result = localize(
+                ref_path, search_path,
+                return_confidence=True, return_diagnostics=True,
+                optical=args.optical
             )
+            # Unpack (localize returns either 2, 3, or 4 tuple based on flags)
+            # Since we set both flags, it returns 4 items
+            pred_x, pred_y, confidence, diagnostics = result
         except FileNotFoundError as e:
             failure_reason = "missing_file"
             print(f"  [{i + 1}/{len(rows)}] FILE ERROR on sample {sample_id}: {e}", file=sys.stderr)
             pred_x, pred_y = 500.0, 500.0
             confidence = 0.0
-            diagnostics = {"is_periodic": False, "period_strength": 0.0}
+            diagnostics = {"period_strength": 0.0}
         except cv2.error as e:
             failure_reason = "opencv_error"
             print(f"  [{i + 1}/{len(rows)}] OpenCV ERROR on sample {sample_id}: {e}", file=sys.stderr)
             pred_x, pred_y = 500.0, 500.0
             confidence = 0.0
-            diagnostics = {"is_periodic": False, "period_strength": 0.0}
+            diagnostics = {"period_strength": 0.0}
         except (ValueError, RuntimeError, OSError) as e:
             failure_reason = type(e).__name__
             print(f"  [{i + 1}/{len(rows)}] PIPELINE ERROR on sample {sample_id}: {e}", file=sys.stderr)
             pred_x, pred_y = 500.0, 500.0
             confidence = 0.0
-            diagnostics = {"is_periodic": False, "period_strength": 0.0}
+            diagnostics = {"period_strength": 0.0}
         except Exception as e:  # Defensive boundary for one bad sample.
             failure_reason = f"unexpected:{type(e).__name__}"
             print(
@@ -458,7 +485,7 @@ def main() -> None:
             )
             pred_x, pred_y = 500.0, 500.0
             confidence = 0.0
-            diagnostics = {"is_periodic": False, "period_strength": 0.0}
+            diagnostics = {"period_strength": 0.0}
 
         elapsed = time.perf_counter() - t0
         error = float(np.hypot(pred_x - gt_x, pred_y - gt_y))
@@ -479,7 +506,6 @@ def main() -> None:
                 "search_path": search_path,
                 "failure_reason": failure_reason,
                 "confidence": confidence,
-                "is_periodic": diagnostics.get("is_periodic", False),
                 "period_strength": diagnostics.get("period_strength", 0.0),
                 "verification_score": diagnostics.get("verification_score", 0.0),
                 "confidence_label": diagnostics.get("confidence_label", "UNKNOWN"),
@@ -518,6 +544,9 @@ def main() -> None:
     )
     _save_summary(
         results, os.path.join(args.output_dir, "results_summary.txt"), args.tolerance_px
+    )
+    _save_predictions_csv(
+        results, os.path.join(args.output_dir, "predictions.csv")
     )
 
     # Print summary to stdout

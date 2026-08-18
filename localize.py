@@ -30,20 +30,27 @@ import time
 import cv2
 import numpy as np
 
-from src.matcher.coarse_matcher import Candidate, coarse_match
+from src.matcher.coarse_matcher import Candidate, coarse_match, CENTER_SELECTION_SCALES
 from src.matcher.refine import refine_location
+from src.matcher.strip_anchor import strip_anchor_match
 
 
 def _preprocess(img: np.ndarray) -> np.ndarray:
-    """Preprocess image preserving physical scale relationships.
+    """Preprocess image for cross-scale ZNCC matching.
 
-    Uses global min-max normalization to handle dose differences without
-    distorting local spatial contrast ratios, followed by Gaussian smoothing
-    (5x5, sigma=1.5) to suppress Poisson shot noise and detector noise without
-    inducing non-linear edge artifacts.
+    CLAHE is explicitly avoided here: it uses tile-based local normalization,
+    which applies different non-linear transforms to the reference (1nm/px tiles)
+    and the search (10nm/px tiles), completely destroying cross-image correlation.
+
+    Instead we use:
+    1. Global min-max normalization (dose-invariant, preserves relative contrast)
+    2. Bilateral filter (edge-preserving denoising, better than Gaussian at high noise)
+    REF: Tomasi & Manduchi (1998) -- bilateral filter standard for SEM denoising.
     """
     norm = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX)
-    filtered = cv2.GaussianBlur(norm, (5, 5), 1.5)
+    # Bilateral: d=9, sigmaColor=30, sigmaSpace=15
+    # Stronger than original Gaussian(5,5) but edge-preserving for noisy Level 4-6 images
+    filtered = cv2.bilateralFilter(norm, d=7, sigmaColor=25, sigmaSpace=10)
     return filtered
 
 
@@ -53,6 +60,7 @@ def localize(
     verbose: bool = False,
     return_confidence: bool = False,
     return_diagnostics: bool = False,
+    optical: bool = False,
 ) -> tuple[float, float] | tuple[float, float, float] | tuple[float, float, float, dict]:
     """Run the full localization pipeline.
 
@@ -60,6 +68,7 @@ def localize(
         reference_path: Path to the reference image (1000x1000 @ 1 nm/px).
         search_path: Path to the search image (1000x1000 @ 10 nm/px).
         verbose: If True, log detailed timing and diagnostics.
+        optical: If True, treats inputs as RGB images and routes to the optical matcher.
 
     Returns:
         (x, y) predicted center in search image coordinates.
@@ -76,8 +85,12 @@ def localize(
 
     # --- Load ---
     t0 = time.perf_counter()
-    reference = cv2.imread(reference_path, cv2.IMREAD_GRAYSCALE)
-    search = cv2.imread(search_path, cv2.IMREAD_GRAYSCALE)
+    if optical:
+        reference = cv2.imread(reference_path, cv2.IMREAD_COLOR)
+        search = cv2.imread(search_path, cv2.IMREAD_COLOR)
+    else:
+        reference = cv2.imread(reference_path, cv2.IMREAD_GRAYSCALE)
+        search = cv2.imread(search_path, cv2.IMREAD_GRAYSCALE)
 
     if reference is None:
         print(
@@ -93,63 +106,145 @@ def localize(
         "Load: %.3fs (ref=%s, search=%s)", t_load, reference.shape, search.shape
     )
 
-    # --- Preprocess ---
-    t0 = time.perf_counter()
-    ref_proc = _preprocess(reference)
-    search_proc = _preprocess(search)
-    t_preprocess = time.perf_counter() - t0
-    logger.info("Preprocess: %.3fs", t_preprocess)
-
-    # --- Coarse Match ---
-    t0 = time.perf_counter()
-    candidates = coarse_match(ref_proc, search_proc)
-    t_coarse = time.perf_counter() - t0
-    logger.info("Coarse match: %.3fs (%d candidates)", t_coarse, len(candidates))
+    # --- Routing ---
+    if optical:
+        # ** ISOLATED OPTICAL RGB TRACK **
+        from src.matcher.optical_matcher import color_aware_match
+        t0 = time.perf_counter()
+        candidates = color_aware_match(reference, search)
+        t_coarse = time.perf_counter() - t0
+        t_preprocess = 0.0  # Handled inside the optical matcher
+        ref_proc = cv2.cvtColor(reference, cv2.COLOR_BGR2GRAY)  # For refinement step only
+        search_proc = cv2.cvtColor(search, cv2.COLOR_BGR2GRAY)
+        strip_result = None
+        max_score = candidates[0].score if candidates else 0.0
+    else:
+        # ** ISOLATED GRAYSCALE SEM TRACK **
+        # --- Preprocess ---
+        t0 = time.perf_counter()
+        ref_proc = _preprocess(reference)
+        search_proc = _preprocess(search)
+        t_preprocess = time.perf_counter() - t0
+        logger.info("Preprocess: %.3fs", t_preprocess)
     
-    # Adaptive Cascade Router
+        # --- Coarse Match ---
+        t0 = time.perf_counter()
+        candidates = coarse_match(ref_proc, search_proc)
+        t_coarse = time.perf_counter() - t0
+        max_score = candidates[0].score if candidates else 0.0
+        logger.info("Coarse match: %.3fs (top score=%.3f, count=%d)", t_coarse, max_score, len(candidates))
+
+    # --- Strategy 1: Strip Anchor (ONLY when ZNCC is ambiguous AND NOT OPTICAL) ---
+    # Strip anchor is expensive in terms of false positives when ZNCC is already confident.
+    # Only run it when ZNCC has multiple high-scoring candidates (aliasing risk).
     initial_max = candidates[0].score if candidates else 0.0
-    if initial_max < 0.35:
-        logger.warning(
-            "WARNING_SEVERE_NOISE_OR_OOD: Triggering Heavy Fallback Pipeline (score=%.3f)", 
-            initial_max
-        )
-        t_fb = time.perf_counter()
-        from src.matcher.fallback import heavy_match
-        candidates, ref_proc, search_proc = heavy_match(reference, search)
-        logger.info("Fallback execution time: %.3fs", time.perf_counter() - t_fb)
+    aliasing_ratio = (candidates[1].score / initial_max) if len(candidates) > 1 and initial_max > 0 else 0.0
+    
+    if not optical:
+        zncc_is_unambiguous = initial_max > 0.45 and aliasing_ratio < 0.88
+        strip_result = None  # Default: no strip anchor result
+        
+        if not zncc_is_unambiguous and initial_max >= 0.35:
+            # ZNCC is ambiguous — try strip anchor to resolve it
+            t0 = time.perf_counter()
+            strip_result = strip_anchor_match(reference, search)
+            t_strip = time.perf_counter() - t0
+            if strip_result is not None:
+                logger.info(
+                    "Strip anchor fired (conf=%.3f, dir=%s) → (%.1f, %.1f) [%.3fs]",
+                    strip_result.confidence, strip_result.direction,
+                    strip_result.x, strip_result.y, t_strip
+                )
+        
+        # Adaptive Cascade Router: heavy fallback when ZNCC finds nothing
+        if initial_max < 0.35:
+            logger.warning(
+                "WARNING_SEVERE_NOISE_OR_OOD: Triggering Heavy Fallback Pipeline (score=%.3f)",
+                initial_max
+            )
+            t_fb = time.perf_counter()
+            try:
+                from src.matcher.fallback import heavy_match
+                candidates, ref_proc, search_proc = heavy_match(reference, search)
+                logger.info("Fallback execution time: %.3fs", time.perf_counter() - t_fb)
+            except ImportError:
+                logger.warning("Fallback module not found, continuing with ZNCC results.")
 
     # --- Disambiguation & Refinement ---
     t0 = time.perf_counter()
     
     # Defaults for diagnostics
-    is_periodic = False
     periodic_strength = 0.0
     period_px = (0, 0)
     selected_method = "coarse_best"
     verification_score = 0.0
     t_disambig = 0.0
     
-    if not candidates:
-        h, w = search_proc.shape
-        refined_x, refined_y = w / 2.0, h / 2.0
-        confidence = 0.0
+    if optical:
+        # For optical images, the LAB Chrominance SSD already guarantees the global minimum.
+        # Structural sub-pixel refinement (Lukas-Kanade) fails because the optical patch 
+        # is diffraction-limited and lacks structural variance, causing it to drift.
+        best_cand = candidates[0] if candidates else None
+        if best_cand:
+            refined_x, refined_y = best_cand.x, best_cand.y
+            confidence = float(best_cand.score)
+        else:
+            h, w = search_proc.shape
+            refined_x, refined_y = w / 2.0, h / 2.0
+            confidence = 0.0
+        selected_method = "optical_ssd"
     else:
-        refined_results = []
-        for c in candidates:
-            rx, ry, rscore = refine_location(ref_proc, search_proc, c)
-            refined_results.append((rx, ry, rscore, c))
+        if not candidates:
+            h, w = search_proc.shape
+            refined_x, refined_y = w / 2.0, h / 2.0
+            confidence = 0.0
+        elif strip_result is not None and strip_result.confidence >= 0.15:
+            # Strategy 1 wins: strip anchor gives us an unambiguous location
+            # Guard: only trust strip anchor when combined confidence is meaningful
+            logger.info("Using strip anchor result (conf=%.3f)", strip_result.confidence)
+            from src.matcher.coarse_matcher import Candidate as Cand
+            anchor_cand = Cand(
+                x=strip_result.x, y=strip_result.y, score=strip_result.confidence,
+                scale=10.0, template_w=100, template_h=100, rotation=0.0
+            )
+            rx, ry, rscore = refine_location(ref_proc, search_proc, anchor_cand)
+            refined_x, refined_y = rx, ry
+            confidence = float(rscore)
+            selected_method = "strip_anchor"
+        else:
+            # No strip anchor available — use multi-scale ZNCC voting to pick the most
+            # consistent candidate across multiple template scales.
+            from src.matcher.coarse_matcher import coarse_match as _cm
+            vote_counts: dict[tuple[int,int], int] = {}
+            for sc in CENTER_SELECTION_SCALES:
+                vc = _cm(ref_proc, search_proc, scales=(sc,), max_candidates=5)
+                for c in vc[:3]:
+                    key = (int(round(c.x / 5) * 5), int(round(c.y / 5) * 5))
+                    vote_counts[key] = vote_counts.get(key, 0) + 1
             
-        max_rscore = max(r[2] for r in refined_results)
-        # Perfect tie is within 0.1% (0.001) in ZNCC space
-        tied_refined = [r for r in refined_results if r[2] >= max_rscore - 0.001]
-        
-        h, w = search_proc.shape
-        cx, cy = w / 2.0, h / 2.0
-        # Break ties using center proximity
-        final_choice = min(tied_refined, key=lambda r: np.hypot(r[0] - cx, r[1] - cy))
-        
-        refined_x, refined_y = final_choice[0], final_choice[1]
-        confidence = float(final_choice[2])
+            best_voted_key = max(vote_counts, key=vote_counts.get) if vote_counts else None
+            
+            if best_voted_key is not None and vote_counts[best_voted_key] >= 3:
+                bvx, bvy = best_voted_key
+                voted_cand = min(candidates, key=lambda c: (int(round(c.x/5)*5) - bvx)**2 + (int(round(c.y/5)*5) - bvy)**2)
+                rx, ry, rscore = refine_location(ref_proc, search_proc, voted_cand)
+                refined_x, refined_y = rx, ry
+                confidence = float(rscore)
+                selected_method = "multiscale_vote"
+                logger.info("Multi-scale vote consensus: (%.1f, %.1f) with %d votes", rx, ry, vote_counts[best_voted_key])
+            else:
+                refined_results = []
+                for c in candidates:
+                    rx, ry, rscore = refine_location(ref_proc, search_proc, c)
+                    refined_results.append((rx, ry, rscore, c))
+                max_rscore = max(r[2] for r in refined_results)
+                tied_refined = [r for r in refined_results if r[2] >= max_rscore - 0.001]
+                h, w = search_proc.shape
+                cx, cy = w / 2.0, h / 2.0
+                final_choice = min(tied_refined, key=lambda r: np.hypot(r[0] - cx, r[1] - cy))
+                refined_x, refined_y = final_choice[0], final_choice[1]
+                confidence = float(final_choice[2])
+                selected_method = "center_proximity"
         
         # Diagnostic Engine Extraction
         max_score = candidates[0].score if candidates else 0.0
@@ -179,7 +274,6 @@ def localize(
     )
 
     diagnostics = {
-        "is_periodic": is_periodic,
         "period_strength": periodic_strength,
         "period_px": period_px,
         "verification_score": verification_score,
@@ -215,9 +309,14 @@ def main() -> None:
         action="store_true",
         help="Print timing and diagnostic info to stderr",
     )
+    p.add_argument(
+        "--optical",
+        action="store_true",
+        help="Run the isolated Optical RGB pipeline instead of the SEM grayscale pipeline",
+    )
     args = p.parse_args()
 
-    x, y = localize(args.reference, args.search, verbose=args.verbose)
+    x, y = localize(args.reference, args.search, verbose=args.verbose, optical=args.optical)
     print(f"{x:.2f},{y:.2f}")
 
 

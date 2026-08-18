@@ -104,6 +104,9 @@ class GenerationParams:
     drift_amplitude_px: float = 1.5
     drift_correlation_rows: float = 50.0
 
+    # Stage placement error (translation between reference and search crop)
+    stage_drift_px: float = 0.0
+
     # Correlated scan-line shifts (separate from drift)
     # REF: Maraghechi et al. Mechanics of Materials
     scanline_shift_sigma_px: float = 0.5
@@ -160,6 +163,7 @@ def _apply_severity(params: GenerationParams, level: int) -> GenerationParams:
     params.speckle_sigma = sv["speckle_sigma"]
     params.salt_pepper_prob = sv["salt_pepper_prob"]
     params.boundary_bias = sv["boundary_bias"]
+    params.stage_drift_px = sv.get("stage_drift_px", 0.0)
     return params
 
 
@@ -244,8 +248,13 @@ def generate_sample(
     ref_cx_fine = x0_ref + REFERENCE_SIZE_PX // 2
     ref_cy_fine = y0_ref + REFERENCE_SIZE_PX // 2
     half_search = SEARCH_FINE_SIZE_PX // 2  # 5000
-    sx0 = ref_cx_fine - half_search  # left edge of search fine patch
-    sy0 = ref_cy_fine - half_search  # top  edge of search fine patch
+    
+    # Introduce stage placement error (this shifts the ground truth in the search image)
+    stage_error_x = int(rng.uniform(-params.stage_drift_px, params.stage_drift_px)) * SCALE_FACTOR
+    stage_error_y = int(rng.uniform(-params.stage_drift_px, params.stage_drift_px)) * SCALE_FACTOR
+    
+    sx0 = ref_cx_fine - half_search + stage_error_x  # left edge of search fine patch
+    sy0 = ref_cy_fine - half_search + stage_error_y  # top  edge of search fine patch
 
     # Clip to canvas (shouldn't clip with 12000 canvas and ±300 jitter, but be safe)
     sx0 = int(np.clip(sx0, 0, FINE_CANVAS_SIZE_PX - SEARCH_FINE_SIZE_PX))
@@ -370,6 +379,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dose-search", type=float, default=GenerationParams.dose_search)
     p.add_argument("--beam-spot-size-nm", type=float, default=GenerationParams.beam_spot_size_nm)
     p.add_argument("--drift-amplitude-px", type=float, default=GenerationParams.drift_amplitude_px)
+    p.add_argument("--stage-drift-px", type=float, default=GenerationParams.stage_drift_px)
     p.add_argument("--drift-correlation-rows", type=float, default=GenerationParams.drift_correlation_rows)
     p.add_argument("--scanline-shift-sigma-px", type=float, default=GenerationParams.scanline_shift_sigma_px)
     p.add_argument("--scanline-shift-correlation", type=float, default=GenerationParams.scanline_shift_correlation)
@@ -440,6 +450,7 @@ def main() -> None:
                 dose_search=args.dose_search,
                 beam_spot_size_nm=args.beam_spot_size_nm,
                 drift_amplitude_px=args.drift_amplitude_px,
+                stage_drift_px=args.stage_drift_px,
                 drift_correlation_rows=args.drift_correlation_rows,
                 scanline_shift_sigma_px=args.scanline_shift_sigma_px,
                 scanline_shift_correlation=args.scanline_shift_correlation,
