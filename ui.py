@@ -190,6 +190,15 @@ with tab3:
         a3.metric("3px", f"{acc_3px:.1f}%")
         a4.metric("4px", f"{acc_4px:.1f}%")
         a5.metric("5px", f"{acc_5px:.1f}%")
+
+        with st.expander("View Confusion Matrix (Matches vs Mismatches)"):
+            cm_data = []
+            for tol in [1, 2, 3, 4, 5]:
+                matches = (df["error"] <= tol).sum()
+                mismatches = len(df) - matches
+                acc = (matches / len(df)) * 100
+                cm_data.append({"Tolerance": f"<= {tol}px", "Match (TP)": matches, "Mismatch (FP)": mismatches, "Accuracy": f"{acc:.1f}%"})
+            st.table(pd.DataFrame(cm_data).set_index("Tolerance"))
         
         st.markdown("**Error & Latency**")
         m1, m2, m3 = st.columns(3)

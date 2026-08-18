@@ -330,14 +330,15 @@ def _save_summary(
         f.write(f"Total samples:    {len(results)}\n")
         f.write(f"Tolerance:        {tolerance} px\n\n")
 
-        # Overall accuracy at multiple tolerances
-        f.write("ACCURACY BY TOLERANCE\n")
-        f.write("-" * 40 + "\n")
+        f.write("CONFUSION MATRIX (Tolerance vs Matches)\n")
+        f.write("-" * 55 + "\n")
+        f.write(f"{'Tolerance':<12} | {'Match (TP)':<12} | {'Mismatch (FP)':<15} | {'Accuracy':<10}\n")
+        f.write("-" * 55 + "\n")
         for tol in [1, 2, 3, 4, 5]:
-            acc = float((errors_arr <= tol).mean()) * 100
-            f.write(
-                f"  <={tol}px: {acc:6.1f}% ({int((errors_arr <= tol).sum())}/{len(errors)})\n"
-            )
+            matches = int((errors_arr <= tol).sum())
+            mismatches = len(errors) - matches
+            acc = (matches / len(errors)) * 100
+            f.write(f"<= {tol}px{'':<5} | {matches:<12} | {mismatches:<15} | {acc:.1f}%\n")
 
         f.write("\nERROR STATISTICS\n")
         f.write("-" * 40 + "\n")
@@ -555,9 +556,15 @@ def main() -> None:
     print(f"\n{'=' * 50}")
     print(f"RESULTS SUMMARY ({len(results)} samples)")
     print(f"{'=' * 50}")
+    print(f"\nCONFUSION MATRIX (Matches vs Mismatches)")
+    print("-" * 55)
+    print(f"{'Tolerance':<12} | {'Match (TP)':<12} | {'Mismatch (FP)':<15} | {'Accuracy':<10}")
+    print("-" * 55)
     for tol in [1, 2, 3, 4, 5]:
-        acc = float((errors_arr <= tol).mean()) * 100
-        print(f"  Accuracy @{tol}px: {acc:.1f}%")
+        matches = int((errors_arr <= tol).sum())
+        mismatches = len(errors) - matches
+        acc = (matches / len(errors)) * 100
+        print(f"<= {tol}px{'':<5} | {matches:<12} | {mismatches:<15} | {acc:.1f}%")
     print(f"  Mean error:     {np.mean(errors):.3f} px")
     print(f"  Median error:   {np.median(errors):.3f} px")
     print(f"  Mean time:      {np.mean([r['time'] for r in results]):.3f} s")
