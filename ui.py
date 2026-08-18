@@ -11,8 +11,11 @@ st.markdown("A control panel for the Drift-Sense SEM localization engine.")
 # Sidebar for Configuration
 st.sidebar.header("Configuration")
 
+# Track Mode
+track_mode = st.sidebar.radio("Target Modality", ["Grayscale (SEM)", "RGB (Optical)"])
+
 # Customization Mode
-config_mode = st.sidebar.radio("Customization Mode", ["Severity Curriculum (Easy)", "Advanced Customization (Full Physics)"])
+config_mode = st.sidebar.radio("Customization Mode", ["Severity Curriculum ", "Advanced Customization (Full Physics)"])
 
 # Batch or Single
 batch_mode = st.sidebar.radio("Generation Mode", ["Single Image", "Batch Mode"])
@@ -44,8 +47,10 @@ else:
     ]
 
 st.sidebar.markdown("---")
-output_dir = st.sidebar.text_input("Dataset Directory", value="./data_streamlit")
-results_dir = st.sidebar.text_input("Results Directory", value="./results_streamlit")
+default_out = "./data_streamlit_opt" if "RGB" in track_mode else "./data_streamlit_sem"
+default_res = "./results_streamlit_opt" if "RGB" in track_mode else "./results_streamlit_sem"
+output_dir = st.sidebar.text_input("Dataset Directory", value=default_out)
+results_dir = st.sidebar.text_input("Results Directory", value=default_res)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Action Controls")
@@ -59,7 +64,7 @@ with tab1:
     
     col_btn, col_msg = st.columns([1, 2])
     with col_btn:
-        generate_clicked = st.button("Generate Dataset", use_container_width=True, type="primary")
+        generate_clicked = st.button("Generate Dataset", width="stretch", type="primary")
         
     if generate_clicked:
         if config_mode == "Severity Curriculum (Easy)":
@@ -67,15 +72,20 @@ with tab1:
         else:
             st.info(f"Generating {num_samples} custom physics samples...")
             
+        script = "final_data_generation.run_optical" if "RGB" in track_mode else "final_data_generation.run"
         cmd = [
-            "python3", "-m", "final_data_generation.run",
+            "python3", "-m", script,
             "--num-samples", str(num_samples),
             "--output-dir", output_dir
         ]
-        if config_mode == "Severity Curriculum (Easy)":
-            cmd.extend(["--severity-level", str(severity)])
+        
+        if "SEM" in track_mode:
+            if config_mode == "Severity Curriculum (Easy)":
+                cmd.extend(["--severity-level", str(severity)])
+            else:
+                cmd.extend(advanced_args)
         else:
-            cmd.extend(advanced_args)
+            st.warning("Optical generator uses fixed physics presets. Ignoring curriculum/advanced sliders.")
         
         with st.spinner("Running final_data_generation engine..."):
             result = subprocess.run(cmd, capture_output=True, text=True)
@@ -91,7 +101,7 @@ with tab1:
     st.markdown("---")
     st.subheader("Dataset Image Viewer")
     
-    test_dir = os.path.join(output_dir, "test")
+    test_dir = output_dir if "RGB" in track_mode else os.path.join(output_dir, "test")
     if os.path.exists(test_dir):
         ref_dir = os.path.join(test_dir, "reference")
         if os.path.exists(ref_dir):
@@ -102,12 +112,12 @@ with tab1:
                 col_ref, col_search = st.columns(2)
                 with col_ref:
                     st.markdown("**Reference Image** *(Clean, 1nm/pixel, High Dose)*")
-                    st.image(os.path.join(ref_dir, selected_img), use_container_width=True)
+                    st.image(os.path.join(ref_dir, selected_img), width="stretch")
                 with col_search:
                     st.markdown("**Search Image** *(Drifted, 10nm/pixel, Low Dose)*")
                     search_path = os.path.join(test_dir, "search", selected_img)
                     if os.path.exists(search_path):
-                        st.image(search_path, use_container_width=True)
+                        st.image(search_path, width="stretch")
                     else:
                         st.error("Search image not found.")
             else:
@@ -123,10 +133,10 @@ with tab2:
     
     col_run, col_run_msg = st.columns([1, 2])
     with col_run:
-        eval_clicked = st.button("Run Evaluation Pipeline", use_container_width=True, type="primary")
+        eval_clicked = st.button("Run Evaluation Pipeline", width="stretch", type="primary")
         
     if eval_clicked:
-        manifest_path = os.path.join(output_dir, "test", "manifest.csv")
+        manifest_path = os.path.join(output_dir, "manifest.csv") if "RGB" in track_mode else os.path.join(output_dir, "test", "manifest.csv")
         if not os.path.exists(manifest_path):
             st.error(f"Manifest file not found at {manifest_path}. Please generate the dataset first.")
         else:
@@ -136,6 +146,8 @@ with tab2:
                 "--tolerance-px", "5",
                 "--output-dir", results_dir
             ]
+            if "RGB" in track_mode:
+                cmd.append("--optical")
             
             with st.spinner("Running inference engine (this may take a moment)..."):
                 result = subprocess.run(cmd, capture_output=True, text=True)
@@ -197,7 +209,7 @@ with tab3:
             
             with col_img:
                 st.markdown("**Worst Failure Case Visualization**")
-                st.image(failure_img_path, use_container_width=True)
+                st.image(failure_img_path, width="stretch")
                 
             with col_txt:
                 st.markdown("**Root Cause Diagnosis**")
@@ -236,7 +248,6 @@ with tab3:
             
         st.dataframe(
             df.style.map(highlight_errors, subset=['error']), 
-            use_container_width=True,
+            width="stretch",
             height=300
         )
-

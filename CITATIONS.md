@@ -222,3 +222,18 @@ To combat the extreme Poisson noise observed in low-dose SEM imaging of advanced
 
 2. **Residual and Skip Connections in Semiconductor Metrology:**
    > "Models incorporating skip connections (like U-Net) are vital for semiconductor metrology because they ensure that high-frequency details—such as Line Edge Roughness (LER) and exact structural dimensions—are preserved during the denoising process."
+
+---
+
+## Optical RGB Inspection Physics (Bonus Track)
+
+- Heavens, O.S. (1955). *Optical Properties of Thin Solid Films*. Butterworths.
+- Born, M. & Wolf, E. (1999). *Principles of Optics*, 7th ed. Cambridge UP. [Thin-film interference §1.6, PSF/coherence §10.5]
+- Totzeck, M. et al. (2005). "Optical metrology of sub-wavelength features." *SPIE* 5752. https://doi.org/10.1117/12.598521
+- Flagello, D.G. et al. (1996). "Theory of high-NA imaging in homogeneous thin films." *J. Opt. Soc. Am. A* 13(1), 53–64.
+- Janesick, J.R. (2001). *Scientific Charge-Coupled Devices*. SPIE Press.
+- Meyers, M. et al. (2002). "Signal-to-noise analysis for wafer inspection." *SPIE* 4692. https://doi.org/10.1117/12.474470
+- Cohn, R. et al. (1998). "Dark-field optical microscopy for defect detection." *SPIE* 3332.
+- Palik, E.D. (1985). *Handbook of Optical Constants of Solids*. Academic Press. [n, k values for Si, SiO2]
+- KLA-Tencor (2019). "Broadband Plasma Illumination for Patterned Wafer Inspection." KLA Technical Note.
+- Brunner, T.A. (1997). "Impact of lens aberrations on optical lithography." *IBM J. Res. Dev.* 41(1–2), 57–67.

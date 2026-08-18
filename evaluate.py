@@ -413,12 +413,21 @@ def main() -> None:
     p.add_argument(
         "--output-dir", default="./results", help="Directory for evaluation outputs"
     )
+    p.add_argument(
+        "--optical",
+        action="store_true",
+        help="Run evaluation using the isolated Optical RGB pipeline",
+    )
     args = p.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
 
     rows = _load_manifest(args.manifest)
     print(f"Evaluating {len(rows)} samples...")
+
+    if not rows:
+        print(f"Error: Manifest file {args.manifest} is empty. Please wait for the dataset generation to complete or generate a new dataset.", file=sys.stderr)
+        sys.exit(1)
 
     results: list[dict] = []
     manifest_dir = os.path.dirname(os.path.abspath(args.manifest))
@@ -440,9 +449,16 @@ def main() -> None:
                 raise FileNotFoundError(ref_path)
             if not os.path.isfile(search_path):
                 raise FileNotFoundError(search_path)
-            pred_x, pred_y, confidence, diagnostics = localize(
-                ref_path, search_path, verbose=False, return_diagnostics=True
+            # --- Run Localization ---
+            # We explicitly pass return_confidence and return_diagnostics for robust error tracking
+            result = localize(
+                ref_path, search_path,
+                return_confidence=True, return_diagnostics=True,
+                optical=args.optical
             )
+            # Unpack (localize returns either 2, 3, or 4 tuple based on flags)
+            # Since we set both flags, it returns 4 items
+            pred_x, pred_y, confidence, diagnostics = result
         except FileNotFoundError as e:
             failure_reason = "missing_file"
             print(f"  [{i + 1}/{len(rows)}] FILE ERROR on sample {sample_id}: {e}", file=sys.stderr)
