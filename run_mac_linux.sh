@@ -15,6 +15,15 @@ if ! command -v $PYTHON_CMD &> /dev/null; then
     exit 1
 fi
 
+# Recreate virtual environment if it is broken or copied from another system
+if [ -d "venv" ]; then
+    venv/bin/python -c "import sys; sys.exit(0)" >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo "Existing virtual environment is broken or from another system. Recreating..."
+        rm -rf venv
+    fi
+fi
+
 # Create virtual environment if it doesn't exist
 if [ ! -d "venv" ]; then
     echo "Creating virtual environment..."
@@ -24,9 +33,9 @@ fi
 # Activate and install requirements
 echo "Activating virtual environment and installing dependencies..."
 source venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
+$PYTHON_CMD -m pip install --upgrade pip
+$PYTHON_CMD -m pip install -r requirements.txt
 
 # Run the app
 echo "Starting Drift-Sense UI..."
-streamlit run ui.py
+$PYTHON_CMD -m streamlit run ui.py
